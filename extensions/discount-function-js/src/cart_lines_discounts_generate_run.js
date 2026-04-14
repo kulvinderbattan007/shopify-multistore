@@ -55,7 +55,7 @@ console.log("inputinput", input);
             ],
             value: {
               percentage: {
-                value: 10,
+                value: 0,
               },
             },
           },
@@ -80,7 +80,7 @@ console.log("inputinput", input);
             ],
             value: {
               percentage: {
-                value: 20,
+                value: 0,
               },
             },
           },

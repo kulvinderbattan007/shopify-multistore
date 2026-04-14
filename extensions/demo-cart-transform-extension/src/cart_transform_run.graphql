@@ -1,0 +1,28 @@
+query CartTransformRunInput {
+  cart {
+    lines {
+      id
+      quantity
+      cost {
+        amountPerQuantity {
+          amount
+        }
+      }
+    }
+  }
+
+  shop {
+    customDiscountSettings: metafield(
+      namespace: "custom_discount_settings"
+      key: "shop_discount_rules"
+    ) {
+      type
+      value
+      # If your generated types support it and you're using Rust, you'd use jsonValue;
+      # for JS, type + value is usually enough and value is a string.
+      # jsonValue
+    }
+  }
+}
+
+
