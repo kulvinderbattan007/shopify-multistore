@@ -108,74 +108,188 @@ async function saveShopDiscountSettings(admin, settings) {
   }
 }
 
-export const loader = async ({ request }) => {
+export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
-  const shopSettings = await loadShopDiscountSettings(admin);
-  return { shopSettings };
-};
+  const url = new URL(request.url);
+  const searchQuery = url.searchParams.get("q") || "";
 
-export const action = async ({ request }) => {
+  if (searchQuery) {
+    const response = await admin.graphql(
+      `#graphql
+      query SearchProducts($query: String!) {
+        products(first: 10, query: $query) {
+          edges {
+            node {
+              id
+              title
+              images(first: 1) {
+                edges {
+                  node {
+                    url
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      { variables: { query: searchQuery } }
+    );
+
+    const json = await response.json();
+    return { products: json.data?.products?.edges || [] };
+  }
+
+  return { products: [] };
+}
+
+export async function action({ request }) {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const actionType = formData.get("actionType");
 
-  if (actionType === "GET_METAFIELD") {
-    const fetchedSettings = await loadShopDiscountSettings(admin);
-    return { fetchedSettings };
-  }
+  if (actionType === "UPLOAD_IMAGE") {
+    const productId = formData.get("productId");
+    const imageFile = formData.get("image");
 
-  if (actionType === "SAVE_DISCOUNT_SETTINGS") {
-    const productDiscountType = formData.get("product_discount_type")?.toString() ?? "";
-    const productDiscountValue = formData.get("product_discount_value")?.toString() ?? "";
-    const orderDiscountType = formData.get("order_discount_type")?.toString() ?? "";
-    const orderDiscountValue = formData.get("order_discount_value")?.toString() ?? "";
-
-    const errors = [];
-    if (!productDiscountType) {
-      errors.push("Product discount type is required.");
+    if (!productId || !imageFile) {
+      return { error: "Product ID and image are required" };
     }
-    if (!orderDiscountType) {
-      errors.push("Order discount type is required.");
-    }
-
-    const parsedProductDiscountValue = Number(productDiscountValue);
-    const parsedOrderDiscountValue = Number(orderDiscountValue);
-
-    if (productDiscountType && Number.isNaN(parsedProductDiscountValue)) {
-      errors.push("Product discount value must be a number.");
-    }
-    if (orderDiscountType && Number.isNaN(parsedOrderDiscountValue)) {
-      errors.push("Order discount value must be a number.");
-    }
-    if (!Number.isNaN(parsedProductDiscountValue) && parsedProductDiscountValue < 0) {
-      errors.push("Product discount value must be zero or greater.");
-    }
-    if (!Number.isNaN(parsedOrderDiscountValue) && parsedOrderDiscountValue < 0) {
-      errors.push("Order discount value must be zero or greater.");
-    }
-
-    if (errors.length > 0) {
-      return { errors };
-    }
-
-    const settings = {
-      product_discount_type: productDiscountType,
-      product_discount_value: parsedProductDiscountValue,
-      order_discount_type: orderDiscountType,
-      order_discount_value: parsedOrderDiscountValue,
-      savedAt: new Date().toISOString(),
-    };
 
     try {
-      const savedSettings = await saveShopDiscountSettings(admin, settings);
-      return { savedSettings, success: true };
+      // First, create a staged upload
+      const stagedUploadResponse = await admin.graphql(
+        `#graphql
+        mutation StagedUploadCreate($input: StagedUploadInput!) {
+          stagedUploadsCreate(input: $input) {
+            stagedTargets {
+              url
+              resourceUrl
+              parameters {
+                name
+                value
+              }
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }`,
+        {
+          variables: {
+            input: {
+              filename: imageFile.name,
+              mimeType: imageFile.type,
+              httpMethod: "POST",
+              resource: "IMAGE",
+            },
+          },
+        }
+      );
+
+      const stagedJson = await stagedUploadResponse.json();
+      const stagedTarget = stagedJson.data?.stagedUploadsCreate?.stagedTargets?.[0];
+
+      if (!stagedTarget) {
+        throw new Error("Failed to create staged upload");
+      }
+
+      // Upload the file to the staged URL
+      const uploadFormData = new FormData();
+      stagedTarget.parameters.forEach(({ name, value }) => {
+        uploadFormData.append(name, value);
+      });
+      uploadFormData.append("file", imageFile);
+
+      const uploadResponse = await fetch(stagedTarget.url, {
+        method: "POST",
+        body: uploadFormData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to upload file");
+      }
+
+      // Create file reference
+      const fileCreateResponse = await admin.graphql(
+        `#graphql
+        mutation FileCreate($files: [FileCreateInput!]!) {
+          fileCreate(files: $files) {
+            files {
+              id
+              url
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }`,
+        {
+          variables: {
+            files: [
+              {
+                originalSource: stagedTarget.resourceUrl,
+                contentType: "IMAGE",
+              },
+            ],
+          },
+        }
+      );
+
+      const fileJson = await fileCreateResponse.json();
+      const file = fileJson.data?.fileCreate?.files?.[0];
+
+      if (!file) {
+        throw new Error("Failed to create file reference");
+      }
+
+      // Set metafield
+      const metafieldResponse = await admin.graphql(
+        `#graphql
+        mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+          metafieldsSet(metafields: $metafields) {
+            metafields {
+              id
+              value
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }`,
+        {
+          variables: {
+            metafields: [
+              {
+                ownerId: productId,
+                namespace: "custom_product_banner",
+                key: "banner_image",
+                type: "file_reference",
+                value: file.id,
+              },
+            ],
+          },
+        }
+      );
+
+      const metafieldJson = await metafieldResponse.json();
+      const errors = metafieldJson.data?.metafieldsSet?.userErrors || [];
+
+      if (errors.length > 0) {
+        throw new Error(errors.map((e) => e.message).join(", "));
+      }
+
+      return { success: true, imageUrl: file.url };
     } catch (error) {
-      return { errors: [error instanceof Error ? error.message : "Unable to save settings."] };
+      return { error: error.message };
     }
   }
 
-  return null;
-};
+  return { error: "Invalid action" };
+}
 
 export default function Index() {
   const fetcher = useFetcher();

@@ -18,7 +18,9 @@ export default function App() {
       <s-app-nav>
         <s-link href="/app">Home</s-link>
         <s-link href="/app/additional">Additional page tyest</s-link>
-        <s-link href="/app/discount">Discount</s-link>
+        <s-link href="/app/discount">Discount</s-link> 
+        <s-link href="/app/productbanner">Product Banner</s-link>
+
 
       </s-app-nav>
       <Outlet />
