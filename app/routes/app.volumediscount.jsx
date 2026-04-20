@@ -14,7 +14,6 @@ const METAFIELD_TYPE = "json";
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
 
-  // 1. Fetch saved metafield
   const metafieldResponse = await admin.graphql(
     `#graphql
     query GetVolumeDiscountMetafield {
@@ -41,12 +40,11 @@ export async function loader({ request }) {
     }
   }
 
-  // 2. Fetch full product details for each saved rule (to hydrate the list on load)
+  // Fetch full product + variant details for saved rules
   let savedProducts = [];
   if (Array.isArray(savedRules) && savedRules.length > 0) {
     const productIds = savedRules.map((r) => r.productId).filter(Boolean);
     if (productIds.length > 0) {
-      // Use aliases to fetch multiple products in one query
       const aliases = productIds
         .map(
           (id, i) => `
@@ -58,6 +56,16 @@ export async function loader({ request }) {
             }
             images(first: 1) {
               edges { node { url } }
+            }
+            variants(first: 100) {
+              edges {
+                node {
+                  id
+                  title
+                  price
+                  image { url }
+                }
+              }
             }
           }`
         )
@@ -89,17 +97,15 @@ export async function action({ request }) {
 
   // ── Search / Browse products ──
   if (actionType === "SEARCH_PRODUCTS") {
+    console.log("ffff");
     const raw = formData.get("query");
     const searchTerm = typeof raw === "string" ? raw.trim() : "";
-
-    // Empty → browse all (omit variable); non-empty → filter by title
-    const variables =
-      searchTerm.length > 0 ? { query: `title:${searchTerm}` } : {};
+    const variables = searchTerm.length > 0 ? { query: `title:${searchTerm}` } : {};
 
     const response = await admin.graphql(
       `#graphql
       query SearchProducts($query: String) {
-        products(first: 10, query: $query) {
+        products(first: 250, query: $query) {
           edges {
             node {
               id
@@ -110,6 +116,16 @@ export async function action({ request }) {
               images(first: 1) {
                 edges { node { url } }
               }
+              variants(first: 100) {
+                edges {
+                  node {
+                    id
+                    title
+                    price
+                    image { url }
+                  }
+                }
+              }
             }
           }
         }
@@ -118,10 +134,7 @@ export async function action({ request }) {
     );
 
     const json = await response.json();
-    if (json.errors) {
-      console.error("Shopify GraphQL errors:", JSON.stringify(json.errors));
-    }
-
+    if (json.errors) console.error("Shopify GraphQL errors:", JSON.stringify(json.errors));
     const products = json?.data?.products?.edges?.map((e) => e.node) || [];
     return { actionType: "SEARCH_PRODUCTS", products };
   }
@@ -137,9 +150,13 @@ export async function action({ request }) {
     }
 
     const shopResponse = await admin.graphql(
-      `#graphql
-      query GetShopId { shop { id } }`
-    );
+  `#graphql
+  query GetShopId {
+    shop {
+      id
+    }
+  }`
+);
     const shopJson = await shopResponse.json();
     const shopId = shopJson?.data?.shop?.id;
 
@@ -171,7 +188,6 @@ export async function action({ request }) {
 
     const mutationJson = await mutation.json();
     const userErrors = mutationJson?.data?.metafieldsSet?.userErrors || [];
-
     if (userErrors.length) {
       return { actionType: "SAVE_VOLUME_RULES", errors: userErrors.map((e) => e.message) };
     }
@@ -202,17 +218,18 @@ function getProductPrice(product) {
   }).format(Number(price.amount));
 }
 
+function getVariants(product) {
+  return product?.variants?.edges?.map((e) => e.node) || [];
+}
+
 // ─── Portal Dropdown ──────────────────────────────────────────────────────────
-// Renders the dropdown at document.body level so it escapes s-section stacking context
 
 function PortalDropdown({ anchorRef, portalRef, children }) {
   const [rect, setRect] = useState(null);
 
   useEffect(() => {
     function updateRect() {
-      if (anchorRef.current) {
-        setRect(anchorRef.current.getBoundingClientRect());
-      }
+      if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
     }
     updateRect();
     window.addEventListener("scroll", updateRect, true);
@@ -249,267 +266,328 @@ function PortalDropdown({ anchorRef, portalRef, children }) {
   );
 }
 
-// ─── Tier Modal ───────────────────────────────────────────────────────────────
+// ─── Tier Modal (variant-based) ───────────────────────────────────────────────
 
 function TierModal({ product, existingTiers, onClose, onSave, isSaving }) {
-  const [tiers, setTiers] = useState(
-    existingTiers?.length
-      ? existingTiers.map((t, i) => ({ ...t, _id: i + 1 }))
-      : []
-  );
-  const [counter, setCounter] = useState(existingTiers?.length || 0);
+  const variants = getVariants(product);
 
-  function addTier() {
-    const newId = counter + 1;
-    setCounter(newId);
-    setTiers((prev) => [...prev, { _id: newId, minQty: "", discount: "", label: "" }]);
+  // variantTiers: { [variantId]: [{ _id, minQty, discount, label }] }
+  const [variantTiers, setVariantTiers] = useState(() => {
+    const init = {};
+    variants.forEach((v) => {
+      const saved = existingTiers?.filter((t) => t.variantId === v.id) || [];
+      init[v.id] = saved.length
+        ? saved.map((t, i) => ({ ...t, _id: i + 1 }))
+        : [];
+    });
+    return init;
+  });
+
+  const [counters, setCounters] = useState(() => {
+    const init = {};
+    variants.forEach((v) => {
+      const saved = existingTiers?.filter((t) => t.variantId === v.id) || [];
+      init[v.id] = saved.length;
+    });
+    return init;
+  });
+
+  // Track which variant sections are expanded
+  const [expanded, setExpanded] = useState(() => {
+    const init = {};
+    // Auto-expand variants that already have tiers
+    variants.forEach((v) => {
+      const saved = existingTiers?.filter((t) => t.variantId === v.id) || [];
+      init[v.id] = saved.length > 0;
+    });
+    // If none expanded, expand first
+    if (variants.length > 0 && !Object.values(init).some(Boolean)) {
+      init[variants[0].id] = true;
+    }
+    return init;
+  });
+
+  function toggleExpand(variantId) {
+    setExpanded((prev) => ({ ...prev, [variantId]: !prev[variantId] }));
   }
 
-  function removeTier(id) {
-    setTiers((prev) => prev.filter((t) => t._id !== id));
+  function addTier(variantId) {
+    const newId = (counters[variantId] || 0) + 1;
+    setCounters((prev) => ({ ...prev, [variantId]: newId }));
+    setVariantTiers((prev) => ({
+      ...prev,
+      [variantId]: [...(prev[variantId] || []), { _id: newId, minQty: "", discount: "", label: "" }],
+    }));
   }
 
-  function updateTier(id, field, value) {
-    setTiers((prev) => prev.map((t) => (t._id === id ? { ...t, [field]: value } : t)));
+  function removeTier(variantId, _id) {
+    setVariantTiers((prev) => ({
+      ...prev,
+      [variantId]: prev[variantId].filter((t) => t._id !== _id),
+    }));
+  }
+
+  function updateTier(variantId, _id, field, value) {
+    setVariantTiers((prev) => ({
+      ...prev,
+      [variantId]: prev[variantId].map((t) => (t._id === _id ? { ...t, [field]: value } : t)),
+    }));
   }
 
   function handleSave() {
-    const validTiers = tiers
-      .filter((t) => t.minQty !== "" && t.discount !== "")
-      .map(({ _id, ...t }) => ({
-        minQty: Number(t.minQty),
-        discount: Number(t.discount),
-        label: t.label || "",
-      }))
-      .sort((a, b) => a.minQty - b.minQty);
-    if (!validTiers.length) return;
-    onSave(product, validTiers);
+    // Flatten all variant tiers into a single array with variantId attached
+    const allTiers = [];
+    variants.forEach((v) => {
+      const tiers = variantTiers[v.id] || [];
+      const valid = tiers
+        .filter((t) => t.minQty !== "" && t.discount !== "")
+        .map(({ _id, ...t }) => ({
+          variantId: v.id,
+          variantTitle: v.title,
+          minQty: Number(t.minQty),
+          discount: Number(t.discount),
+          label: t.label || "",
+        }))
+        .sort((a, b) => a.minQty - b.minQty);
+      allTiers.push(...valid);
+    });
+
+    if (!allTiers.length) return;
+    onSave(product, allTiers);
   }
 
-  const canSave = tiers.length > 0 && tiers.every((t) => t.minQty !== "" && t.discount !== "");
+  // canSave: at least one variant has at least one valid tier
+  const canSave = variants.some((v) =>
+    (variantTiers[v.id] || []).some((t) => t.minQty !== "" && t.discount !== "")
+  );
+
+  // Count saved tiers per variant
+  function variantTierCount(variantId) {
+    return (variantTiers[variantId] || []).filter((t) => t.minQty !== "" && t.discount !== "").length;
+  }
+
   const imgUrl = getProductImage(product);
   const price = getProductPrice(product);
+  const isDefault = variants.length === 1 && variants[0].title === "Default Title";
 
   return createPortal(
     <>
-      {/* Backdrop */}
       <div
         onClick={onClose}
         style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 10000 }}
       />
-
-      {/* Modal */}
       <div
         style={{
-          position: "fixed",
-          top: "50%",
-          left: "50%",
+          position: "fixed", top: "50%", left: "50%",
           transform: "translate(-50%, -50%)",
-          background: "#fff",
-          borderRadius: "12px",
-          width: "min(640px, 95vw)",
-          maxHeight: "85vh",
-          overflowY: "auto",
-          zIndex: 10001,
+          background: "#fff", borderRadius: "12px",
+          width: "min(700px, 95vw)", maxHeight: "88vh",
+          overflowY: "auto", zIndex: 10001,
           boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-          display: "flex",
-          flexDirection: "column",
+          display: "flex", flexDirection: "column",
         }}
       >
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            padding: "20px 24px",
-            borderBottom: "1px solid #e1e3e5",
-            position: "sticky",
-            top: 0,
-            background: "#fff",
-            zIndex: 1,
-            borderRadius: "12px 12px 0 0",
-          }}
-        >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "20px 24px", borderBottom: "1px solid #e1e3e5", position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: "12px 12px 0 0" }}>
           {imgUrl ? (
-            <img
-              src={imgUrl}
-              alt={product.title}
-              style={{
-                width: "48px", height: "48px", objectFit: "cover",
-                borderRadius: "8px", border: "1px solid #e1e3e5", flexShrink: 0,
-              }}
-            />
+            <img src={imgUrl} alt={product.title} style={{ width: "48px", height: "48px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e1e3e5", flexShrink: 0 }} />
           ) : (
-            <div
-              style={{
-                width: "48px", height: "48px", borderRadius: "8px",
-                background: "#f1f2f3", display: "flex", alignItems: "center",
-                justifyContent: "center", flexShrink: 0,
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="#8c9196">
-                <path d="M2 3a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm0 6a1 1 0 011-1h14a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V9z" />
-              </svg>
+            <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "#f1f2f3", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="#8c9196"><path d="M2 3a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm0 6a1 1 0 011-1h14a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V9z" /></svg>
             </div>
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: "15px", color: "#202223", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {product.title}
             </div>
-            {price && (
-              <div style={{ fontSize: "13px", color: "#6d7175", marginTop: "2px" }}>
-                Starting at {price}
-              </div>
-            )}
+            <div style={{ fontSize: "12px", color: "#6d7175", marginTop: "2px" }}>
+              {isDefault ? "1 variant (default)" : `${variants.length} variant${variants.length !== 1 ? "s" : ""}`}
+              {price && ` · Starting at ${price}`}
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "6px", color: "#6d7175", display: "flex", alignItems: "center" }}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" />
-            </svg>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "6px", color: "#6d7175", display: "flex" }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" /></svg>
           </button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: "20px 24px", flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: "14px", color: "#202223" }}>Discount Tiers</div>
-              <div style={{ fontSize: "12px", color: "#6d7175", marginTop: "2px" }}>
-                Customers buying above the minimum quantity will get the discount
-              </div>
-            </div>
-            <button
-              onClick={addTier}
-              style={{
-                display: "flex", alignItems: "center", gap: "6px",
-                padding: "8px 14px", background: "#5c6ac4", color: "#fff",
-                border: "none", borderRadius: "8px", fontSize: "13px",
-                fontWeight: 500, cursor: "pointer",
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                <path d="M7 1a1 1 0 011 1v4h4a1 1 0 110 2H8v4a1 1 0 11-2 0V8H2a1 1 0 110-2h4V2a1 1 0 011-1z" />
-              </svg>
-              Add Tier
-            </button>
+        <div style={{ padding: "16px 24px", flex: 1 }}>
+
+          {/* Info banner */}
+          <div style={{ background: "#f0f4ff", border: "1px solid #c4cff5", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", fontSize: "12px", color: "#3c4fe0", display: "flex", gap: "8px", alignItems: "flex-start" }}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style={{ flexShrink: 0, marginTop: "1px" }}><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
+            <span>Tiers are configured per variant. The Variant ID is saved to the metafield for use in your discount function.</span>
           </div>
 
-          {tiers.length === 0 && (
-            <div style={{ textAlign: "center", padding: "40px 20px", color: "#8c9196", background: "#f6f6f7", borderRadius: "8px", border: "1px dashed #c9cccf", fontSize: "13px" }}>
-              No tiers yet. Click "Add Tier" to create your first discount rule.
-            </div>
-          )}
+          {/* Variant sections */}
+          {variants.map((variant, vIndex) => {
+            const tiers = variantTiers[variant.id] || [];
+            const isExpanded = expanded[variant.id];
+            const tierCount = variantTierCount(variant.id);
+            const variantImg = variant.image?.url || imgUrl;
+            const shortId = variant.id.split("/").pop();
 
-          {tiers.length > 0 && (
-            <div style={{ background: "#f6f6f7", borderRadius: "8px", overflow: "hidden", border: "1px solid #e1e3e5" }}>
-              {/* Table header */}
-              <div style={{ display: "grid", gridTemplateColumns: "32px 1fr 1fr 1.4fr 36px", gap: "8px", padding: "10px 14px", background: "#f1f2f3", borderBottom: "1px solid #e1e3e5" }}>
-                {["#", "Min Qty", "Discount %", "Label (optional)", ""].map((h, i) => (
-                  <div key={i} style={{ fontSize: "11px", fontWeight: 600, color: "#6d7175", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    {h}
-                  </div>
-                ))}
-              </div>
-
-              {tiers.map((tier, index) => (
+            return (
+              <div
+                key={variant.id}
+                style={{ border: "1px solid #e1e3e5", borderRadius: "10px", marginBottom: "10px", overflow: "hidden" }}
+              >
+                {/* Variant header row */}
                 <div
-                  key={tier._id}
-                  style={{
-                    display: "grid", gridTemplateColumns: "32px 1fr 1fr 1.4fr 36px",
-                    gap: "8px", padding: "10px 14px", alignItems: "center",
-                    borderBottom: index < tiers.length - 1 ? "1px solid #e1e3e5" : "none",
-                    background: "#fff",
-                  }}
+                  onClick={() => toggleExpand(variant.id)}
+                  style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", background: isExpanded ? "#f4f5fa" : "#fafafa", cursor: "pointer", userSelect: "none" }}
                 >
-                  <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#5c6ac4", color: "#fff", fontSize: "11px", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {index + 1}
-                  </div>
-
-                  <input
-                    type="number" min="1" placeholder="e.g. 10"
-                    value={tier.minQty}
-                    onChange={(e) => updateTier(tier._id, "minQty", e.target.value)}
-                    style={{ border: "1px solid #c9cccf", borderRadius: "6px", padding: "6px 10px", fontSize: "13px", width: "100%", outline: "none", boxSizing: "border-box" }}
-                    onFocus={(e) => (e.target.style.borderColor = "#5c6ac4")}
-                    onBlur={(e) => (e.target.style.borderColor = "#c9cccf")}
-                  />
-
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type="number" min="0" max="100" step="0.5" placeholder="e.g. 15"
-                      value={tier.discount}
-                      onChange={(e) => updateTier(tier._id, "discount", e.target.value)}
-                      style={{ border: "1px solid #c9cccf", borderRadius: "6px", padding: "6px 26px 6px 10px", fontSize: "13px", width: "100%", outline: "none", boxSizing: "border-box" }}
-                      onFocus={(e) => (e.target.style.borderColor = "#5c6ac4")}
-                      onBlur={(e) => (e.target.style.borderColor = "#c9cccf")}
-                    />
-                    <span style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", fontSize: "12px", color: "#6d7175", pointerEvents: "none" }}>%</span>
-                  </div>
-
-                  <input
-                    type="text" placeholder="e.g. Bulk deal"
-                    value={tier.label}
-                    onChange={(e) => updateTier(tier._id, "label", e.target.value)}
-                    style={{ border: "1px solid #c9cccf", borderRadius: "6px", padding: "6px 10px", fontSize: "13px", width: "100%", outline: "none", boxSizing: "border-box" }}
-                    onFocus={(e) => (e.target.style.borderColor = "#5c6ac4")}
-                    onBlur={(e) => (e.target.style.borderColor = "#c9cccf")}
-                  />
-
-                  <button
-                    onClick={() => removeTier(tier._id)}
-                    style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", borderRadius: "4px", color: "#6d7175", display: "flex", alignItems: "center", justifyContent: "center" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#fff4f4"; e.currentTarget.style.color = "#d82c0d"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#6d7175"; }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                      <path d="M6 2a1 1 0 00-1 1v.5H2.5a.5.5 0 000 1H3v8a1 1 0 001 1h8a1 1 0 001-1v-8h.5a.5.5 0 000-1H11V3a1 1 0 00-1-1H6zm0 1h4v.5H6V3zm-2 2h8v8H4V5zm2 2a.5.5 0 00-.5.5v4a.5.5 0 001 0v-4A.5.5 0 006 7zm2 0a.5.5 0 00-.5.5v4a.5.5 0 001 0v-4A.5.5 0 008 7zm2 0a.5.5 0 00-.5.5v4a.5.5 0 001 0v-4A.5.5 0 0010 7z" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Preview hints */}
-          {tiers.some((t) => t.minQty && t.discount) && (
-            <div style={{ marginTop: "14px" }}>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "#6d7175", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Preview
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                {tiers
-                  .filter((t) => t.minQty && t.discount)
-                  .sort((a, b) => Number(a.minQty) - Number(b.minQty))
-                  .map((t, i) => (
-                    <div key={i} style={{ fontSize: "12px", color: "#202223", background: "#f0f4ff", border: "1px solid #c4cff5", borderRadius: "6px", padding: "5px 10px" }}>
-                      Buy <strong>{t.minQty}+</strong> units → get <strong>{t.discount}% off</strong>
-                      {t.label ? ` — ${t.label}` : ""}
+                  {variantImg && !isDefault && (
+                    <img src={variantImg} alt={variant.title} style={{ width: "32px", height: "32px", objectFit: "cover", borderRadius: "6px", border: "1px solid #e1e3e5", flexShrink: 0 }} />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#202223" }}>
+                      {isDefault ? "Default Variant" : variant.title}
                     </div>
-                  ))}
+                    <div style={{ fontSize: "11px", color: "#6d7175", marginTop: "2px", fontFamily: "monospace" }}>
+                      ID: {shortId}
+                      {variant.price && ` · $${variant.price}`}
+                    </div>
+                  </div>
+                  {tierCount > 0 && (
+                    <span style={{ fontSize: "11px", fontWeight: 500, background: "#e3f1df", color: "#108043", borderRadius: "20px", padding: "2px 10px", flexShrink: 0 }}>
+                      {tierCount} tier{tierCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  <svg
+                    width="16" height="16" viewBox="0 0 20 20" fill="#6d7175"
+                    style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}
+                  >
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </div>
+
+                {/* Expanded tier table */}
+                {isExpanded && (
+                  <div style={{ padding: "14px 16px", background: "#fff", borderTop: "1px solid #e1e3e5" }}>
+
+                    {/* Add tier button */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                      <div style={{ fontSize: "12px", color: "#6d7175" }}>
+                        Set quantity thresholds and discounts for this variant
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); addTier(variant.id); }}
+                        style={{ display: "flex", alignItems: "center", gap: "5px", padding: "6px 12px", background: "#5c6ac4", color: "#fff", border: "none", borderRadius: "7px", fontSize: "12px", fontWeight: 500, cursor: "pointer" }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 14 14" fill="currentColor">
+                          <path d="M7 1a1 1 0 011 1v4h4a1 1 0 110 2H8v4a1 1 0 11-2 0V8H2a1 1 0 110-2h4V2a1 1 0 011-1z" />
+                        </svg>
+                        Add Tier
+                      </button>
+                    </div>
+
+                    {tiers.length === 0 && (
+                      <div style={{ textAlign: "center", padding: "20px", color: "#8c9196", background: "#f6f6f7", borderRadius: "7px", border: "1px dashed #c9cccf", fontSize: "12px" }}>
+                        No tiers yet for this variant. Click "Add Tier" above.
+                      </div>
+                    )}
+
+                    {tiers.length > 0 && (
+                      <div style={{ border: "1px solid #e1e3e5", borderRadius: "8px", overflow: "hidden" }}>
+                        {/* Table header */}
+                        <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 1fr 1.3fr 32px", gap: "8px", padding: "8px 12px", background: "#f1f2f3", borderBottom: "1px solid #e1e3e5" }}>
+                          {["#", "Min Qty", "Discount %", "Label (optional)", ""].map((h, i) => (
+                            <div key={i} style={{ fontSize: "10px", fontWeight: 600, color: "#6d7175", textTransform: "uppercase", letterSpacing: "0.05em" }}>{h}</div>
+                          ))}
+                        </div>
+
+                        {tiers.map((tier, tIndex) => (
+                          <div
+                            key={tier._id}
+                            style={{ display: "grid", gridTemplateColumns: "28px 1fr 1fr 1.3fr 32px", gap: "8px", padding: "8px 12px", alignItems: "center", borderBottom: tIndex < tiers.length - 1 ? "1px solid #f1f2f3" : "none", background: "#fff" }}
+                          >
+                            <div style={{ width: "22px", height: "22px", borderRadius: "50%", background: "#5c6ac4", color: "#fff", fontSize: "10px", fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {tIndex + 1}
+                            </div>
+                            <input
+                              type="number" min="1" placeholder="e.g. 10"
+                              value={tier.minQty}
+                              onChange={(e) => updateTier(variant.id, tier._id, "minQty", e.target.value)}
+                              style={{ border: "1px solid #c9cccf", borderRadius: "6px", padding: "5px 8px", fontSize: "12px", width: "100%", outline: "none", boxSizing: "border-box" }}
+                              onFocus={(e) => (e.target.style.borderColor = "#5c6ac4")}
+                              onBlur={(e) => (e.target.style.borderColor = "#c9cccf")}
+                            />
+                            <div style={{ position: "relative" }}>
+                              <input
+                                type="number" min="0" max="100" step="0.5" placeholder="e.g. 15"
+                                value={tier.discount}
+                                onChange={(e) => updateTier(variant.id, tier._id, "discount", e.target.value)}
+                                style={{ border: "1px solid #c9cccf", borderRadius: "6px", padding: "5px 22px 5px 8px", fontSize: "12px", width: "100%", outline: "none", boxSizing: "border-box" }}
+                                onFocus={(e) => (e.target.style.borderColor = "#5c6ac4")}
+                                onBlur={(e) => (e.target.style.borderColor = "#c9cccf")}
+                              />
+                              <span style={{ position: "absolute", right: "7px", top: "50%", transform: "translateY(-50%)", fontSize: "11px", color: "#6d7175", pointerEvents: "none" }}>%</span>
+                            </div>
+                            <input
+                              type="text" placeholder="e.g. Bulk deal"
+                              value={tier.label}
+                              onChange={(e) => updateTier(variant.id, tier._id, "label", e.target.value)}
+                              style={{ border: "1px solid #c9cccf", borderRadius: "6px", padding: "5px 8px", fontSize: "12px", width: "100%", outline: "none", boxSizing: "border-box" }}
+                              onFocus={(e) => (e.target.style.borderColor = "#5c6ac4")}
+                              onBlur={(e) => (e.target.style.borderColor = "#c9cccf")}
+                            />
+                            <button
+                              onClick={() => removeTier(variant.id, tier._id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: "3px", borderRadius: "4px", color: "#6d7175", display: "flex", alignItems: "center", justifyContent: "center" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "#fff4f4"; e.currentTarget.style.color = "#d82c0d"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#6d7175"; }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M6 2a1 1 0 00-1 1v.5H2.5a.5.5 0 000 1H3v8a1 1 0 001 1h8a1 1 0 001-1v-8h.5a.5.5 0 000-1H11V3a1 1 0 00-1-1H6zm0 1h4v.5H6V3zm-2 2h8v8H4V5zm2 2a.5.5 0 00-.5.5v4a.5.5 0 001 0v-4A.5.5 0 006 7zm2 0a.5.5 0 00-.5.5v4a.5.5 0 001 0v-4A.5.5 0 008 7zm2 0a.5.5 0 00-.5.5v4a.5.5 0 001 0v-4A.5.5 0 0010 7z" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Preview */}
+                    {tiers.some((t) => t.minQty && t.discount) && (
+                      <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                        {tiers
+                          .filter((t) => t.minQty && t.discount)
+                          .sort((a, b) => Number(a.minQty) - Number(b.minQty))
+                          .map((t, i) => (
+                            <div key={i} style={{ fontSize: "11px", color: "#202223", background: "#f0f4ff", border: "1px solid #c4cff5", borderRadius: "5px", padding: "4px 10px" }}>
+                              Buy <strong>{t.minQty}+</strong> → <strong>{t.discount}% off</strong>
+                              {t.label ? ` — ${t.label}` : ""}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })}
         </div>
 
         {/* Footer */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", padding: "16px 24px", borderTop: "1px solid #e1e3e5", background: "#f6f6f7", borderRadius: "0 0 12px 12px", position: "sticky", bottom: 0 }}>
-          <button
-            onClick={onClose}
-            style={{ padding: "8px 18px", border: "1px solid #c9cccf", borderRadius: "8px", background: "#fff", fontSize: "14px", fontWeight: 500, cursor: "pointer", color: "#202223" }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!canSave || isSaving}
-            style={{ padding: "8px 18px", border: "none", borderRadius: "8px", background: canSave && !isSaving ? "#5c6ac4" : "#c9cccf", color: "#fff", fontSize: "14px", fontWeight: 500, cursor: canSave && !isSaving ? "pointer" : "not-allowed" }}
-          >
-            {isSaving ? "Saving..." : "Save Tiers"}
-          </button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", padding: "16px 24px", borderTop: "1px solid #e1e3e5", background: "#f6f6f7", borderRadius: "0 0 12px 12px", position: "sticky", bottom: 0 }}>
+          <div style={{ fontSize: "12px", color: "#6d7175" }}>
+            {variants.reduce((acc, v) => acc + variantTierCount(v.id), 0)} tier{variants.reduce((acc, v) => acc + variantTierCount(v.id), 0) !== 1 ? "s" : ""} configured across {variants.filter(v => variantTierCount(v.id) > 0).length} variant{variants.filter(v => variantTierCount(v.id) > 0).length !== 1 ? "s" : ""}
+          </div>
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button
+              onClick={onClose}
+              style={{ padding: "8px 18px", border: "1px solid #c9cccf", borderRadius: "8px", background: "#fff", fontSize: "14px", fontWeight: 500, cursor: "pointer", color: "#202223" }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!canSave || isSaving}
+              style={{ padding: "8px 18px", border: "none", borderRadius: "8px", background: canSave && !isSaving ? "#5c6ac4" : "#c9cccf", color: "#fff", fontSize: "14px", fontWeight: 500, cursor: canSave && !isSaving ? "pointer" : "not-allowed" }}
+            >
+              {isSaving ? "Saving..." : "Save Tiers"}
+            </button>
+          </div>
         </div>
       </div>
     </>,
@@ -527,8 +605,6 @@ export default function VolumeDiscount() {
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-
-  // Initialize addedProducts from loaderData.savedProducts on first load
   const [addedProducts, setAddedProducts] = useState(loaderData?.savedProducts || []);
   const [modalProduct, setModalProduct] = useState(null);
   const [allRules, setAllRules] = useState(loaderData?.savedRules || []);
@@ -537,37 +613,20 @@ export default function VolumeDiscount() {
   const dropdownPortalRef = useRef(null);
   const searchDebounceRef = useRef(null);
 
-  const isSearching =
-    fetcher.state !== "idle" &&
-    fetcher.formData?.get("actionType") === "SEARCH_PRODUCTS";
+  const isSearching = fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SEARCH_PRODUCTS";
+  const isSaving = fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SAVE_VOLUME_RULES";
 
-  const isSaving =
-    fetcher.state !== "idle" &&
-    fetcher.formData?.get("actionType") === "SAVE_VOLUME_RULES";
-
-  // ── Handle fetcher responses ──
   useEffect(() => {
     if (!fetcher.data) return;
-
     if (fetcher.data.actionType === "SEARCH_PRODUCTS") {
       setSuggestions(fetcher.data.products || []);
       setShowSuggestions(true);
     }
-
     if (fetcher.data.actionType === "SAVE_VOLUME_RULES") {
       if (fetcher.data.success) {
         shopify.toast.show("Volume discount rules saved!");
-        const newRules = fetcher.data.savedRules || allRules;
-        setAllRules(newRules);
+        setAllRules(fetcher.data.savedRules || allRules);
         setModalProduct(null);
-
-        // Re-sync addedProducts: add any products from newRules that aren't listed yet
-        // (in case a product was added via another session)
-        setAddedProducts((prev) => {
-          const existingIds = new Set(prev.map((p) => p.id));
-          // Keep current list intact — tiers badge will update via allRules
-          return prev;
-        });
       }
       if (fetcher.data.errors?.length) {
         shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
@@ -575,44 +634,30 @@ export default function VolumeDiscount() {
     }
   }, [fetcher.data]);
 
-  // ── Close dropdown on outside click ──
-  // Use mousedown but skip if click is inside the portal dropdown itself
   useEffect(() => {
     function handleClickOutside(e) {
       const inSearchBar = searchBarRef.current && searchBarRef.current.contains(e.target);
       const inPortal = dropdownPortalRef.current && dropdownPortalRef.current.contains(e.target);
-      if (!inSearchBar && !inPortal) {
-        setShowSuggestions(false);
-      }
+      if (!inSearchBar && !inPortal) setShowSuggestions(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ── Debounced search on type ──
   function handleSearchInput(value) {
     setSearchQuery(value);
     clearTimeout(searchDebounceRef.current);
-    if (value.trim().length === 0) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
+    if (value.trim().length === 0) { setSuggestions([]); setShowSuggestions(false); return; }
     searchDebounceRef.current = setTimeout(() => {
-      fetcher.submit(
-        { actionType: "SEARCH_PRODUCTS", query: value },
-        { method: "post" }
-      );
+      fetcher.submit({ actionType: "SEARCH_PRODUCTS", query: value }, { method: "post" });
     }, 350);
   }
 
-  // ── Browse button ──
   function handleBrowse() {
     fetcher.submit({ actionType: "SEARCH_PRODUCTS", query: "" }, { method: "post" });
     setShowSuggestions(true);
   }
 
-  // ── Select product from suggestions ──
   function handleSelectSuggestion(product) {
     setShowSuggestions(false);
     setSearchQuery("");
@@ -620,85 +665,55 @@ export default function VolumeDiscount() {
     setAddedProducts((prev) => [...prev, product]);
   }
 
-  // ── Remove product from list ──
   function handleRemoveProduct(productId) {
     setAddedProducts((prev) => prev.filter((p) => p.id !== productId));
   }
 
-  // ── Save tiers ──
   function handleSaveTiers(product, tiers) {
     const updatedRules = Array.isArray(allRules)
       ? allRules.filter((r) => r.productId !== product.id)
       : [];
-
     updatedRules.push({
       productId: product.id,
       productTitle: product.title,
-      tiers,
+      tiers, // each tier now has variantId + variantTitle
       updatedAt: new Date().toISOString().slice(0, 10),
     });
-
     fetcher.submit(
       { actionType: "SAVE_VOLUME_RULES", rules: JSON.stringify(updatedRules) },
       { method: "post" }
     );
   }
 
-  // ── Get existing tiers for a product ──
   function getExistingTiers(productId) {
-    const rule = Array.isArray(allRules)
-      ? allRules.find((r) => r.productId === productId)
-      : null;
+    const rule = Array.isArray(allRules) ? allRules.find((r) => r.productId === productId) : null;
     return rule?.tiers || [];
   }
 
   return (
     <s-page heading="Volume Discounts">
 
-      {/* ── Search Section ── */}
+      {/* Search */}
       <s-section heading="Add Products">
         <div ref={searchBarRef} style={{ position: "relative" }}>
-
-          {/* Search bar */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              border: `1px solid ${showSuggestions ? "#5c6ac4" : "#c9cccf"}`,
-              borderRadius: "10px",
-              padding: "0 12px",
-              background: "#fff",
-              boxShadow: showSuggestions ? "0 0 0 3px rgba(92,106,196,0.15)" : "none",
-              transition: "border-color 0.15s, box-shadow 0.15s",
-            }}
-          >
-            {/* Search icon */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", border: `1px solid ${showSuggestions ? "#5c6ac4" : "#c9cccf"}`, borderRadius: "10px", padding: "0 12px", background: "#fff", boxShadow: showSuggestions ? "0 0 0 3px rgba(92,106,196,0.15)" : "none", transition: "border-color 0.15s, box-shadow 0.15s" }}>
             <svg width="16" height="16" viewBox="0 0 20 20" fill="#8c9196" style={{ flexShrink: 0 }}>
               <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
             </svg>
-
             <input
-              type="text"
-              placeholder="Search products..."
+              type="text" placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => handleSearchInput(e.target.value)}
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               style={{ flex: 1, border: "none", outline: "none", fontSize: "14px", padding: "10px 0", background: "transparent", color: "#202223" }}
             />
-
-            {/* Spinner */}
             {isSearching && (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ animation: "vd-spin 0.8s linear infinite", flexShrink: 0 }}>
                 <circle cx="12" cy="12" r="10" stroke="#e1e3e5" strokeWidth="3" />
                 <path d="M12 2a10 10 0 0110 10" stroke="#5c6ac4" strokeWidth="3" strokeLinecap="round" />
               </svg>
             )}
-
-            {/* Divider */}
             <div style={{ width: "1px", height: "20px", background: "#e1e3e5", margin: "0 4px", flexShrink: 0 }} />
-
-            {/* Browse button */}
             <button
               onClick={handleBrowse}
               style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#f1f2f3", border: "1px solid #c9cccf", borderRadius: "7px", fontSize: "13px", fontWeight: 500, color: "#202223", cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
@@ -712,24 +727,24 @@ export default function VolumeDiscount() {
             </button>
           </div>
 
-          {/* Dropdown — rendered as portal so it escapes s-section stacking context */}
           {showSuggestions && suggestions.length > 0 && (
             <PortalDropdown anchorRef={searchBarRef} portalRef={dropdownPortalRef}>
               <div style={{ padding: "8px 14px", fontSize: "11px", fontWeight: 600, color: "#6d7175", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid #f1f2f3", background: "#fafafa" }}>
                 {suggestions.length} product{suggestions.length !== 1 ? "s" : ""} found
               </div>
-
               {suggestions.map((product) => {
                 const img = getProductImage(product);
                 const price = getProductPrice(product);
+                const variants = getVariants(product);
                 const alreadyAdded = addedProducts.some((p) => p.id === product.id);
+                const isDefault = variants.length === 1 && variants[0].title === "Default Title";
                 return (
                   <div
                     key={product.id}
                     onClick={() => !alreadyAdded && handleSelectSuggestion(product)}
-                    style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", cursor: alreadyAdded ? "default" : "pointer", borderBottom: "1px solid #f1f2f3", background: alreadyAdded ? "#f6f6f7" : "#fff", opacity: alreadyAdded ? 0.6 : 1, transition: "background 0.1s" }}
+                    style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", cursor: alreadyAdded ? "default" : "pointer", borderBottom: "1px solid #f1f2f3", background: alreadyAdded ? "#f6f6f7" : "#fff", opacity: alreadyAdded ? 0.6 : 1 }}
                     onMouseEnter={(e) => { if (!alreadyAdded) e.currentTarget.style.background = "#f4f5fa"; }}
-                    onMouseLeave={(e) => { if (!alreadyAdded) e.currentTarget.style.background = alreadyAdded ? "#f6f6f7" : "#fff"; }}
+                    onMouseLeave={(e) => { if (!alreadyAdded) e.currentTarget.style.background = "#fff"; }}
                   >
                     {img ? (
                       <img src={img} alt={product.title} style={{ width: "36px", height: "36px", objectFit: "cover", borderRadius: "6px", border: "1px solid #e1e3e5", flexShrink: 0 }} />
@@ -737,19 +752,15 @@ export default function VolumeDiscount() {
                       <div style={{ width: "36px", height: "36px", borderRadius: "6px", background: "#f1f2f3", flexShrink: 0 }} />
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: "14px", fontWeight: 500, color: "#202223", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {product.title}
+                      <div style={{ fontSize: "14px", fontWeight: 500, color: "#202223", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.title}</div>
+                      <div style={{ fontSize: "11px", color: "#6d7175" }}>
+                        {price}{!isDefault && ` · ${variants.length} variants`}
                       </div>
-                      {price && <div style={{ fontSize: "12px", color: "#6d7175" }}>{price}</div>}
                     </div>
                     {alreadyAdded ? (
-                      <span style={{ fontSize: "11px", color: "#6d7175", background: "#f1f2f3", border: "1px solid #e1e3e5", borderRadius: "20px", padding: "2px 10px" }}>
-                        Added
-                      </span>
+                      <span style={{ fontSize: "11px", color: "#6d7175", background: "#f1f2f3", border: "1px solid #e1e3e5", borderRadius: "20px", padding: "2px 10px" }}>Added</span>
                     ) : (
-                      <svg width="16" height="16" viewBox="0 0 20 20" fill="#5c6ac4">
-                        <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-                      </svg>
+                      <svg width="16" height="16" viewBox="0 0 20 20" fill="#5c6ac4"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" /></svg>
                     )}
                   </div>
                 );
@@ -767,7 +778,7 @@ export default function VolumeDiscount() {
         </div>
       </s-section>
 
-      {/* ── Selected Products List ── */}
+      {/* Product list */}
       <s-section heading="Selected Products">
         {addedProducts.length === 0 ? (
           <div style={{ textAlign: "center", padding: "40px 20px", color: "#8c9196", background: "#f6f6f7", borderRadius: "10px", border: "1px dashed #c9cccf" }}>
@@ -785,52 +796,42 @@ export default function VolumeDiscount() {
               const price = getProductPrice(product);
               const existingTiers = getExistingTiers(product.id);
               const hasTiers = existingTiers.length > 0;
+              const variants = getVariants(product);
+              const isDefault = variants.length === 1 && variants[0].title === "Default Title";
+              // Count how many variants have tiers
+              const variantsWithTiers = new Set(existingTiers.map((t) => t.variantId)).size;
 
               return (
-                <div
-                  key={product.id}
-                  style={{ display: "flex", alignItems: "center", gap: "14px", padding: "14px 16px", background: "#fff", borderBottom: index < addedProducts.length - 1 ? "1px solid #e1e3e5" : "none" }}
-                >
-                  {/* Image */}
+                <div key={product.id} style={{ display: "flex", alignItems: "center", gap: "14px", padding: "14px 16px", background: "#fff", borderBottom: index < addedProducts.length - 1 ? "1px solid #e1e3e5" : "none" }}>
                   {img ? (
                     <img src={img} alt={product.title} style={{ width: "48px", height: "48px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e1e3e5", flexShrink: 0 }} />
                   ) : (
                     <div style={{ width: "48px", height: "48px", borderRadius: "8px", background: "#f1f2f3", border: "1px solid #e1e3e5", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <svg width="20" height="20" viewBox="0 0 20 20" fill="#c9cccf">
-                        <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm3 2h6l1.5 3H5.5L7 5z" />
-                      </svg>
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="#c9cccf"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm3 2h6l1.5 3H5.5L7 5z" /></svg>
                     </div>
                   )}
-
-                  {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "14px", fontWeight: 500, color: "#202223", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {product.title}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px" }}>
+                    <div style={{ fontSize: "14px", fontWeight: 500, color: "#202223", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.title}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px", flexWrap: "wrap" }}>
                       {price && <span style={{ fontSize: "12px", color: "#6d7175" }}>{price}</span>}
+                      {!isDefault && <span style={{ fontSize: "11px", color: "#6d7175" }}>{variants.length} variants</span>}
                       {hasTiers && (
                         <span style={{ fontSize: "11px", fontWeight: 500, background: "#e3f1df", color: "#108043", borderRadius: "20px", padding: "1px 8px" }}>
-                          {existingTiers.length} tier{existingTiers.length !== 1 ? "s" : ""} saved
+                          {existingTiers.length} tier{existingTiers.length !== 1 ? "s" : ""} · {variantsWithTiers} variant{variantsWithTiers !== 1 ? "s" : ""}
                         </span>
                       )}
                     </div>
                   </div>
-
-                  {/* Actions */}
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
                     <button
                       onClick={() => handleRemoveProduct(product.id)}
-                      title="Remove product"
+                      title="Remove"
                       style={{ background: "none", border: "1px solid #e1e3e5", borderRadius: "7px", padding: "6px 8px", cursor: "pointer", color: "#6d7175", display: "flex", alignItems: "center" }}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "#fff4f4"; e.currentTarget.style.borderColor = "#f9a89c"; e.currentTarget.style.color = "#d82c0d"; }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = "none"; e.currentTarget.style.borderColor = "#e1e3e5"; e.currentTarget.style.color = "#6d7175"; }}
                     >
-                      <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
+                      <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                     </button>
-
                     <button
                       onClick={() => setModalProduct(product)}
                       style={{ display: "flex", alignItems: "center", gap: "6px", padding: "7px 14px", background: hasTiers ? "#f0f4ff" : "#5c6ac4", color: hasTiers ? "#5c6ac4" : "#fff", border: hasTiers ? "1px solid #c4cff5" : "none", borderRadius: "8px", fontSize: "13px", fontWeight: 500, cursor: "pointer" }}
@@ -848,7 +849,7 @@ export default function VolumeDiscount() {
         )}
       </s-section>
 
-      {/* ── Raw metafield preview ── */}
+      {/* Metafield preview */}
       {allRules?.length > 0 && (
         <s-section heading="Saved Metafield">
           <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
@@ -859,7 +860,6 @@ export default function VolumeDiscount() {
         </s-section>
       )}
 
-      {/* ── Tier Modal (portal) ── */}
       {modalProduct && (
         <TierModal
           product={modalProduct}
@@ -883,7 +883,6 @@ export default function VolumeDiscount() {
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
 };
-
 
 
 

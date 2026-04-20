@@ -1,0 +1,35 @@
+{
+  "cart": {
+    "lines": [
+      {
+        "id": "gid://shopify/CartLine/0",
+        "quantity": 4,
+        "cost": {
+          "subtotalAmount": {
+            "amount": "95.0"
+          }
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/41959507329098",
+          "product": {
+            "id": "gid://shopify/Product/7898496499786"
+          }
+        }
+      }
+    ]
+  },
+  "discount": {
+    "discountClasses": [
+      "PRODUCT",
+      "ORDER",
+      "SHIPPING"
+    ]
+  },
+  "shop": {
+    "customDiscountSettings": {
+      "type": "json",
+      "value": "[{\"productId\":\"gid://shopify/Product/7898496499786\",\"productTitle\":\"Gift Card\",\"tiers\":[{\"variantId\":\"gid://shopify/ProductVariant/41959507329098\",\"variantTitle\":\"$25\",\"minQty\":2,\"discount\":20,\"label\":\"22\"},{\"variantId\":\"gid://shopify/ProductVariant/41959507329098\",\"variantTitle\":\"$25\",\"minQty\":3,\"discount\":30,\"label\":\"33\"}],\"updatedAt\":\"2026-04-20\"}]"
+    }
+  }
+}

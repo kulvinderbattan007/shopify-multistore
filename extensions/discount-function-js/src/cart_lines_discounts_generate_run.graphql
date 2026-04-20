@@ -2,24 +2,33 @@ query CartInput {
   cart {
     lines {
       id
+      quantity
       cost {
         subtotalAmount {
           amount
         }
       }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id          # variant ID
+          product {
+            id        # <-- product ID you want
+          }
+        }
+      }
     }
   }
-   shop {
+  discount {
+    discountClasses
+  }
+  shop {
     customDiscountSettings: metafield(
       namespace: "volume_discount_settings"
       key: "product_volume_rules"
     ) {
       type
       value
-      # If your generated types support it and you're using Rust, you'd use jsonValue;
-      # for JS, type + value is usually enough and value is a string.
-      # jsonValue
     }
   }
 }
- 
