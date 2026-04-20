@@ -20,6 +20,8 @@ export default function App() {
         <s-link href="/app/additional">Additional page tyest</s-link>
         <s-link href="/app/discount">Discount</s-link> 
         <s-link href="/app/productbanner">Product Banner</s-link>
+        <s-link href="/app/volumediscount">Volume discount</s-link>
+
 
 
       </s-app-nav>
