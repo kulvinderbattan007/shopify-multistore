@@ -200,6 +200,52 @@ export async function action({ request }) {
     }
   }
 
+
+  // ── Enable custom discount ──
+if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
+  const { admin } = await authenticate.admin(request);
+
+  const response = await admin.graphql(
+    `#graphql
+    mutation CreateAutomaticDiscount {
+      discountAutomaticAppCreate(
+        automaticAppDiscount: {
+          title: "Cart line, Order, Shipping discount"
+          functionHandle: "discount-function-js"
+          discountClasses: [PRODUCT, ORDER, SHIPPING]
+          startsAt: "2025-01-01T00:00:00"
+        }
+      ) {
+        automaticAppDiscount {
+          discountId
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }`
+  );
+
+  const json = await response.json();
+
+  const errors = json?.data?.discountAutomaticAppCreate?.userErrors || [];
+
+  if (errors.length) {
+    return {
+      actionType: "ENABLE_CUSTOM_DISCOUNT",
+      errors: errors.map((e) => e.message),
+    };
+  }
+
+  return {
+    actionType: "ENABLE_CUSTOM_DISCOUNT",
+    success: true,
+    discountId:
+      json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
+  };
+}
+
   return { errors: ["Unknown action."] };
 }
 
@@ -234,6 +280,14 @@ function PortalDropdown({ anchorRef, portalRef, children }) {
     updateRect();
     window.addEventListener("scroll", updateRect, true);
     window.addEventListener("resize", updateRect);
+    if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
+  if (fetcher.data.success) {
+    shopify.toast.show("Custom discount enabled!");
+  }
+  if (fetcher.data.errors?.length) {
+    shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
+  }
+}
     return () => {
       window.removeEventListener("scroll", updateRect, true);
       window.removeEventListener("resize", updateRect);
@@ -692,6 +746,42 @@ export default function VolumeDiscount() {
 
   return (
     <s-page heading="Volume Discounts">
+
+    <s-section heading="Enable Custom Discount">
+  <div
+    style={{
+      padding: "12px",
+      border: "1px solid #e1e3e5",
+      borderRadius: "10px",
+      background: "#fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+    }}
+  >
+    <div>
+      <div style={{ fontSize: "14px", fontWeight: 500 }}>
+        Enable automatic discount
+      </div>
+      <div style={{ fontSize: "12px", color: "#6d7175" }}>
+        This will activate your Shopify discount function
+      </div>
+    </div>
+
+    <input
+      type="checkbox"
+      onChange={(e) => {
+        if (e.target.checked) {
+          fetcher.submit(
+            { actionType: "ENABLE_CUSTOM_DISCOUNT" },
+            { method: "post" }
+          );
+        }
+      }}
+      style={{ width: "18px", height: "18px", cursor: "pointer" }}
+    />
+  </div>
+</s-section>
 
       {/* Search */}
       <s-section heading="Add Products">

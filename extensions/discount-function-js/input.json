@@ -1,0 +1,68 @@
+
+      {
+  "cart": {
+    "lines": [
+      {
+        "id": "gid:\/\/shopify\/CartLine\/0",
+        "quantity": 1,
+        "cost": {
+          "subtotalAmount": {
+            "amount": "124.99"
+          }
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid:\/\/shopify\/ProductVariant\/52320714555685",
+          "product": {
+            "id": "gid:\/\/shopify\/Product\/10433354268965"
+          }
+        }
+      },
+      {
+        "id": "gid:\/\/shopify\/CartLine\/1",
+        "quantity": 1,
+        "cost": {
+          "subtotalAmount": {
+            "amount": "124.99"
+          }
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid:\/\/shopify\/ProductVariant\/52320714522917",
+          "product": {
+            "id": "gid:\/\/shopify\/Product\/10433354268965"
+          }
+        }
+      },
+      {
+        "id": "gid:\/\/shopify\/CartLine\/2",
+        "quantity": 1,
+        "cost": {
+          "subtotalAmount": {
+            "amount": "124.99"
+          }
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid:\/\/shopify\/ProductVariant\/52320714588453",
+          "product": {
+            "id": "gid:\/\/shopify\/Product\/10433354268965"
+          }
+        }
+      }
+    ]
+  },
+  "discount": {
+    "discountClasses": [
+      "PRODUCT",
+      "ORDER",
+      "SHIPPING"
+    ]
+  },
+  "shop": {
+    "customDiscountSettings": {
+      "type": "json",
+      "value": "{\"version\":1,\"rules\":[{\"id\":\"abc-combo\",\"name\":\"A+B+C combo variable % off\",\"triggers\":{\"allProductIdsRequired\":[\"gid:\/\/shopify\/Product\/52320714522917\",\"gid:\/\/shopify\/Product\/52320714555685\",\"gid:\/\/shopify\/Product\/52320714588453\"]},\"targets\":[{\"productId\":\"gid:\/\/shopify\/Product\/52320714522917\",\"discountType\":\"PERCENT\",\"discountValue\":30},{\"productId\":\"gid:\/\/shopify\/Product\/52320714555685\",\"discountType\":\"PERCENT\",\"discountValue\":20},{\"productId\":\"gid:\/\/shopify\/Product\/52320714588453\",\"discountType\":\"PERCENT\",\"discountValue\":10}]}]}"
+    }
+  }
+}
