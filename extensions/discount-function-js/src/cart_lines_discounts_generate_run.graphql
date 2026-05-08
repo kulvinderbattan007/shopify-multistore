@@ -13,7 +13,7 @@ query CartInput {
         ... on ProductVariant {
           id          # variant ID
           product {
-            id        # <-- product ID you want
+            id        # product ID
           }
         }
       }
@@ -23,10 +23,19 @@ query CartInput {
     discountClasses
   }
   shop {
-   
+    # Existing metafield
     customDiscountSettings: metafield(
       namespace: "volume_discount_settings"
       key: "product_volume_rules"
+    ) {
+      type
+      value
+    }
+
+    # New metafield (cart_discount_namespace.cart_discount_key)
+    cartDiscountSettings: metafield(
+      namespace: "cart_discount_namespace"
+      key: "cart_discount_key"
     ) {
       type
       value

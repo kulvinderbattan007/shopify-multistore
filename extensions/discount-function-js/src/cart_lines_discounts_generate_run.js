@@ -1,8 +1,12 @@
+// src/cart_lines_discounts_generate_run.js
 // @ts-check
 import {
   DiscountClass,
-  ProductDiscountSelectionStrategy,
 } from "../generated/api";
+
+import { runAppTestLogic } from "./logic/app-test-logic.js";
+import { runCheckoutExtensionLogic } from "./logic/checkout-extension-logic.js";
+import { runDefaultLogic } from "./logic/default-logic.js";
 
 /**
  * @typedef {import("../generated/api").Input} CartInput
@@ -10,190 +14,50 @@ import {
  */
 
 /**
+ * Shopify entrypoint for cart.lines.discounts.generate.run
+ *
  * @param {CartInput} input
  * @returns {CartLinesDiscountsGenerateRunResult}
  */
 export function cartLinesDiscountsGenerateRun(input) {
-  console.log("=== cartLinesDiscountsGenerateRun START ===");
+  console.log("=== cartLinesDiscountsGenerateRun ENTRY ===");
 
-  if (!input.cart.lines?.length) {
-    console.log("[DEBUG] No cart lines. Returning empty operations.");
+  // Optional early exit if no product discount class
+  if (!input.discount.discountClasses?.includes(DiscountClass.Product)) {
     return { operations: [] };
   }
 
-  const hasProductDiscountClass = input.discount.discountClasses.includes(
-    DiscountClass.Product
-  );
-  console.log("[DEBUG] discountClasses:", input.discount.discountClasses);
-  console.log("[DEBUG] hasProductDiscountClass:", hasProductDiscountClass);
-
-  if (!hasProductDiscountClass) {
-    console.log("[DEBUG] Product discount class not enabled. Returning empty.");
-    return { operations: [] };
-  }
-
-  // 1. Parse configuration from shop.customDiscountSettings.value
-  const settings = input.shop.customDiscountSettings;
-  console.log("[DEBUG] shop.customDiscountSettings:", settings);
-
+  const settings = input.shop.cartDiscountSettings;
   if (!settings || !settings.value) {
-    console.log("[DEBUG] No customDiscountSettings.value. Returning empty.");
-    return { operations: [] };
+    console.log("[DEBUG] No cartDiscountSettings. Using default logic.");
+    return runDefaultLogic(input, {});
   }
 
-  let rawConfig;
+  let config;
   try {
-    rawConfig = JSON.parse(settings.value);
+    config = JSON.parse(settings.value);
   } catch (e) {
-    console.log("[DEBUG] Error parsing customDiscountSettings.value:", e);
+    console.log("[DEBUG] Error parsing cartDiscountSettings.value:", e);
     return { operations: [] };
   }
 
-  console.log("[DEBUG] Parsed config:", JSON.stringify(rawConfig, null, 2));
+  const storeName =
+    config?.store?.storeName ??
+    config?.store?.name ??
+    null;
 
-  const rules = Array.isArray(rawConfig.rules) ? rawConfig.rules : [];
-  if (!rules.length) {
-    console.log("[DEBUG] No rules in config. Returning empty.");
-    return { operations: [] };
+  console.log("[DEBUG] Parsed storeName from config:", storeName);
+
+  if (storeName === "app-test-zwydcupy") {
+    return runAppTestLogic(input, config);
   }
 
-  const rule = rules[0];
-  console.log("[DEBUG] Using rule:", rule.id, rule.name);
-
-  const triggers = rule.triggers || {};
-  const allRequiredVariantIds = Array.isArray(triggers.allProductIdsRequired)
-    ? triggers.allProductIdsRequired
-    : [];
-  const targets = Array.isArray(rule.targets) ? rule.targets : [];
-
-  console.log("[DEBUG] allRequiredVariantIds (from config):", allRequiredVariantIds);
-  console.log("[DEBUG] targets:", JSON.stringify(targets, null, 2));
-
-  if (!allRequiredVariantIds.length || !targets.length) {
-    console.log("[DEBUG] Missing triggers or targets. Returning empty.");
-    return { operations: [] };
+  if (storeName === "checkou-extension") {
+    return runCheckoutExtensionLogic(input, config);
   }
 
-  // 2. Collect variant IDs in the cart
-  /** @type {Set<string>} */
-  const variantsInCart = new Set();
-
-  for (const line of input.cart.lines) {
-    const merch = line.merchandise;
-    console.log("[DEBUG] Line merchandise typename:", merch?.__typename);
-
-    if (merch?.__typename === "ProductVariant") {
-      const variantId = merch.id;
-      console.log("[DEBUG] Found variantId on line:", line.id, variantId);
-      if (variantId) {
-        variantsInCart.add(variantId);
-      }
-    }
-  }
-
-  console.log("[DEBUG] variantsInCart:", Array.from(variantsInCart));
-
-  // 3. Check if all required variant IDs are present
-  const allRequiredPresent = allRequiredVariantIds.every((requiredId) =>
-    variantsInCart.has(requiredId)
-  );
-  console.log("[DEBUG] allRequiredPresent:", allRequiredPresent);
-
-  if (!allRequiredPresent) {
-    console.log(
-      "[DEBUG] Not all required variants are present in cart. Returning empty."
-    );
-    return { operations: [] };
-  }
-
-  // 4. Rule is active → build candidates
-  const candidates = [];
-
-  for (const line of input.cart.lines) {
-    const merch = line.merchandise;
-    if (!merch || merch.__typename !== "ProductVariant") continue;
-
-    const variantId = merch.id;
-    console.log("[DEBUG] Checking line for target, variantId:", variantId);
-    if (!variantId) continue;
-
-    // match target by variantId (stored in productId field in JSON)
-    const target = targets.find((t) => t.productId === variantId);
-    console.log("[DEBUG] Matched target for this line:", target);
-
-    if (!target) continue;
-
-    if (target.discountType !== "PERCENT") {
-      console.log(
-        "[DEBUG] Target discountType is not PERCENT, skipping:",
-        target.discountType
-      );
-      continue;
-    }
-
-    let discountValue = target.discountValue;
-    console.log("[DEBUG] Raw discountValue:", discountValue);
-
-    if (typeof discountValue !== "number") {
-      console.log("[DEBUG] discountValue is not a number, skipping.");
-      continue;
-    }
-    if (discountValue <= 0) {
-      console.log("[DEBUG] discountValue <= 0, skipping.");
-      continue;
-    }
-    if (discountValue > 100) {
-      discountValue = 100;
-    }
-
-    candidates.push({
-      message:
-        typeof target.label === "string" && target.label.length > 0
-          ? target.label
-          : `${discountValue}% off on combo rule ${rule.name}`,
-      targets: [
-        {
-          cartLine: { id: line.id },
-        },
-      ],
-      value: {
-        percentage: {
-          value: discountValue,
-        },
-      },
-    });
-  }
-
-  console.log("[DEBUG] Built candidates:", JSON.stringify(candidates, null, 2));
-
-  if (!candidates.length) {
-    console.log("[DEBUG] No candidates. Returning empty.");
-    return { operations: [] };
-  }
-
-  const operations = [
-    {
-      productDiscountsAdd: {
-        candidates,
-        selectionStrategy: ProductDiscountSelectionStrategy.All,
-      },
-    },
-  ];
-
-  console.log(
-    "[DEBUG] Returning operations:",
-    JSON.stringify(operations, null, 2)
-  );
-  console.log("=== cartLinesDiscountsGenerateRun END ===");
-
-  return { operations };
+  return runDefaultLogic(input, config);
 }
-
-
-
-
-
-
 
 
 

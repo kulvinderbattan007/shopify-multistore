@@ -13,8 +13,8 @@ query CartTransformRunInput {
 
   shop {
     customDiscountSettings: metafield(
-      namespace: "custom_discount_settings"
-      key: "shop_discount_rules"
+      namespace: "cart_transform_namespace"
+      key: "cart_transform_key"
     ) {
       type
       value
