@@ -42,42 +42,95 @@ export async function loader({ request }) {
       (fn) => fn.app?.id === currentAppId
     );
 
-  // 🔹 Get automatic discounts
-  const discountsResponse = await admin.graphql(`
-    #graphql
-    query AutomaticDiscountsByFunction {
-  automaticDiscountNodes(first: 50) {
-    nodes {
-      id
+  // 🔹 GET ALL DISCOUNT TYPES
+const discountsResponse = await admin.graphql(`
+  #graphql
+  query {
+    discountNodes(first: 20) {
+      edges {
+        node {
+          id
+          __typename
 
-      automaticDiscount {
-        __typename
+          discount {
+            __typename
 
-        ... on DiscountAutomaticApp {
-          title
-          status
+            ... on DiscountCodeBasic {
+              title
+              summary
+              status
+            }
 
-          appDiscountType {
-            functionId
+            ... on DiscountAutomaticBasic {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountCodeBxgy {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountAutomaticBxgy {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountCodeFreeShipping {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountAutomaticApp {
+              title
+              status
+
+              appDiscountType {
+                functionId
+              }
+            }
           }
-        }
-
-        ... on DiscountAutomaticBasic {
-          title
-          status
         }
       }
     }
   }
-}
-  `);
+`);
 
-  const discountsJson = await discountsResponse.json();
+const discountsJson = await discountsResponse.json();
+
+const discounts =
+  discountsJson.data?.discountNodes?.edges || [];
+
+  // 🔹 GET CURRENT APP INSTALLATION DETAILS
+const appResponse = await admin.graphql(`
+  #graphql
+  query {
+    currentAppInstallation {
+      app {
+        id
+        title
+      }
+
+      accessScopes {
+        handle
+      }
+    }
+  }
+`);
+
+const appJson = await appResponse.json();
+
+const currentAppInstallation =
+  appJson.data?.currentAppInstallation || {};
 
   return {
     functions,
-    discounts:
-      discountsJson.data?.automaticDiscountNodes?.nodes || [],
+    discounts,
+    currentAppInstallation
   };
 }
 
@@ -122,10 +175,33 @@ export default function ProductBannerPage() {
           }}
         >
           <pre>
-            {JSON.stringify(data.discounts, null, 2)}
+            {/* {JSON.stringify(data.discounts, null, 2)} */}
+             {JSON.stringify(data.discounts, null, 2)}
           </pre>
         </div>
       </div>
+
+      <div style={{ marginTop: "40px" }}>
+  <h2>Current App Installation</h2>
+
+  <div
+    style={{
+      background: "#111",
+      color: "#0ff",
+      padding: "20px",
+      borderRadius: "10px",
+      overflowX: "auto",
+    }}
+  >
+    <pre>
+      {JSON.stringify(
+        data.currentAppInstallation,
+        null,
+        2
+      )}
+    </pre>
+  </div>
+</div>
     </div>
   );
 }
