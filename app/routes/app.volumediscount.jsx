@@ -5,6 +5,8 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
+// const METAFIELD_NAMESPACE = "volume_discount_namespace";
+// const METAFIELD_KEY = "volume_discount_key";
 const METAFIELD_NAMESPACE = "volume_discount_settings";
 const METAFIELD_KEY = "product_volume_rules";
 const METAFIELD_TYPE = "json";
@@ -13,6 +15,23 @@ const METAFIELD_TYPE = "json";
 
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
+
+
+  // Ensure definition exists (safe to call repeatedly)
+  await admin.graphql(
+    `#graphql
+    mutation {
+      metafieldDefinitionCreate(definition: {
+        name: "Volume Discount Rules"
+        namespace: "volume_discount_settings"
+        key: "product_volume_rules"
+        type: "json"
+        ownerType: SHOP
+      }) {
+        userErrors { field message }
+      }
+    }`
+  );
 
   const metafieldResponse = await admin.graphql(
     `#graphql
@@ -246,6 +265,39 @@ if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
   };
 }
 
+
+if (actionType === "REMOVE_PRODUCT") {
+  const productId = formData.get("productId");
+  let rules = [];
+  try { rules = JSON.parse(formData.get("rules")); } catch {}
+
+  const updatedRules = rules.filter(r => r.productId !== productId);
+
+  const shopResponse = await admin.graphql(
+  `#graphql
+  query GetShopId {
+    shop {
+      id
+    }
+  }`
+);
+const shopJson = await shopResponse.json();
+const shopId = shopJson?.data?.shop?.id;
+  // const shopId = shopJson?.data?.shop?.id;
+
+  await admin.graphql(
+    `#graphql
+    mutation($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        userErrors { field message }
+      }
+    }`,
+    { variables: { metafields: [{ ownerId: shopId, namespace: METAFIELD_NAMESPACE, key: METAFIELD_KEY, type: METAFIELD_TYPE, value: JSON.stringify(updatedRules) }] } }
+  );
+
+  return { actionType: "REMOVE_PRODUCT", success: true, updatedRules };
+}
+
   return { errors: ["Unknown action."] };
 }
 
@@ -273,26 +325,38 @@ function getVariants(product) {
 function PortalDropdown({ anchorRef, portalRef, children }) {
   const [rect, setRect] = useState(null);
 
-  useEffect(() => {
-    function updateRect() {
-      if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
-    }
-    updateRect();
-    window.addEventListener("scroll", updateRect, true);
-    window.addEventListener("resize", updateRect);
-    if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
-  if (fetcher.data.success) {
-    shopify.toast.show("Custom discount enabled!");
+//   useEffect(() => {
+//     function updateRect() {
+//       if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
+//     }
+//     updateRect();
+//     window.addEventListener("scroll", updateRect, true);
+//     window.addEventListener("resize", updateRect);
+//     if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
+//   if (fetcher.data.success) {
+//     shopify.toast.show("Custom discount enabled!");
+//   }
+//   if (fetcher.data.errors?.length) {
+//     shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
+//   }
+// }
+//     return () => {
+//       window.removeEventListener("scroll", updateRect, true);
+//       window.removeEventListener("resize", updateRect);
+//     };
+//   }, [anchorRef]);
+useEffect(() => {
+  function updateRect() {
+    if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
   }
-  if (fetcher.data.errors?.length) {
-    shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
-  }
-}
-    return () => {
-      window.removeEventListener("scroll", updateRect, true);
-      window.removeEventListener("resize", updateRect);
-    };
-  }, [anchorRef]);
+  updateRect();
+  window.addEventListener("scroll", updateRect, true);
+  window.addEventListener("resize", updateRect);
+  return () => {
+    window.removeEventListener("scroll", updateRect, true);
+    window.removeEventListener("resize", updateRect);
+  };
+}, [anchorRef]);
 
   if (!rect) return null;
 
@@ -670,23 +734,54 @@ export default function VolumeDiscount() {
   const isSearching = fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SEARCH_PRODUCTS";
   const isSaving = fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SAVE_VOLUME_RULES";
 
+  // useEffect(() => {
+  //   if (!fetcher.data) return;
+  //   if (fetcher.data.actionType === "SEARCH_PRODUCTS") {
+  //     setSuggestions(fetcher.data.products || []);
+  //     setShowSuggestions(true);
+  //   }
+  //   if (fetcher.data.actionType === "SAVE_VOLUME_RULES") {
+  //     if (fetcher.data.success) {
+  //       shopify.toast.show("Volume discount rules saved!");
+  //       setAllRules(fetcher.data.savedRules || allRules);
+  //       setModalProduct(null);
+  //     }
+  //     if (fetcher.data.errors?.length) {
+  //       shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
+  //     }
+  //   }
+  // }, [fetcher.data]);
   useEffect(() => {
-    if (!fetcher.data) return;
-    if (fetcher.data.actionType === "SEARCH_PRODUCTS") {
-      setSuggestions(fetcher.data.products || []);
-      setShowSuggestions(true);
+  if (!fetcher.data) return;
+  if (fetcher.data.actionType === "SEARCH_PRODUCTS") {
+    setSuggestions(fetcher.data.products || []);
+    setShowSuggestions(true);
+  }
+  if (fetcher.data.actionType === "SAVE_VOLUME_RULES") {
+    if (fetcher.data.success) {
+      shopify.toast.show("Volume discount rules saved!");
+      setAllRules(fetcher.data.savedRules || allRules);
+      setModalProduct(null);
     }
-    if (fetcher.data.actionType === "SAVE_VOLUME_RULES") {
-      if (fetcher.data.success) {
-        shopify.toast.show("Volume discount rules saved!");
-        setAllRules(fetcher.data.savedRules || allRules);
-        setModalProduct(null);
-      }
-      if (fetcher.data.errors?.length) {
-        shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
-      }
+    if (fetcher.data.errors?.length) {
+      shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
     }
-  }, [fetcher.data]);
+  }
+  // ← Add this:
+  if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
+    if (fetcher.data.success) {
+      shopify.toast.show("Custom discount enabled!");
+    }
+    if (fetcher.data.errors?.length) {
+      shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
+    }
+  }
+
+  if (fetcher.data.actionType === "REMOVE_PRODUCT" && fetcher.data.success) {
+  setAllRules(fetcher.data.updatedRules);
+  shopify.toast.show("Product removed.");
+}
+}, [fetcher.data]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -719,9 +814,16 @@ export default function VolumeDiscount() {
     setAddedProducts((prev) => [...prev, product]);
   }
 
+  // function handleRemoveProduct(productId) {
+  //   setAddedProducts((prev) => prev.filter((p) => p.id !== productId));
+  // }
   function handleRemoveProduct(productId) {
-    setAddedProducts((prev) => prev.filter((p) => p.id !== productId));
-  }
+  setAddedProducts(prev => prev.filter(p => p.id !== productId));
+  fetcher.submit(
+    { actionType: "REMOVE_PRODUCT", productId, rules: JSON.stringify(allRules) },
+    { method: "post" }
+  );
+}
 
   function handleSaveTiers(product, tiers) {
     const updatedRules = Array.isArray(allRules)

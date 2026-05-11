@@ -24,7 +24,7 @@ query CartInput {
   }
   shop {
     # Existing metafield
-    customDiscountSettings: metafield(
+    volumeDiscountSettings: metafield(
       namespace: "volume_discount_settings"
       key: "product_volume_rules"
     ) {
