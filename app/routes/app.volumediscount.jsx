@@ -888,6 +888,12 @@ export default function VolumeDiscount() {
   const isSearching = fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SEARCH_PRODUCTS";
   const isSaving = fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SAVE_VOLUME_RULES";
 
+  const isTogglingDiscount =
+  fetcher.state !== "idle" &&
+  (fetcher.formData?.get("actionType") === "ENABLE_CUSTOM_DISCOUNT" ||
+   fetcher.formData?.get("actionType") === "DISABLE_CUSTOM_DISCOUNT");
+
+
   // useEffect(() => {
   //   if (!fetcher.data) return;
   //   if (fetcher.data.actionType === "SEARCH_PRODUCTS") {
@@ -1032,7 +1038,7 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
   return (
     <s-page heading="Volume Discounts">
 
-    <s-section heading="Enable Custom Discount">
+    <s-section heading="Enable Custom Discount..">
   <div
     style={{
       padding: "12px",
@@ -1049,7 +1055,8 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
         Enable automatic discount
       </div>
       <div style={{ fontSize: "12px", color: "#6d7175" }}>
-        This will activate your Shopify discount function
+        {/* This will activate your Shopify discount function */}
+        This will activate your Shopify discount on the products which you will select below.
       </div>
     </div>
 
@@ -1068,6 +1075,7 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
 
     <button
   type="button"
+  disabled={isTogglingDiscount}
   onClick={() => {
 
   // TURN OFF
@@ -1096,12 +1104,31 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
     height: "26px",
     borderRadius: "999px",
     border: "none",
-    cursor: discountEnabled ? "default" : "pointer",
+    // cursor: discountEnabled ? "default" : "pointer",
+    cursor: isTogglingDiscount ? "not-allowed" : "pointer",
     background: discountEnabled ? "#16a34a" : "#c9cccf",
     transition: "all 0.2s ease",
     padding: 0,
   }}
 >
+  {isTogglingDiscount ? (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    style={{
+      position: "absolute",
+      top: "5px",
+      left: "15px",
+      transform: "translateX(-50%)",
+      animation: "vd-spin 0.8s linear infinite",
+    }}
+  >
+    <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+    <path d="M12 2a10 10 0 0110 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+  </svg>
+) : (
   <div
     style={{
       position: "absolute",
@@ -1115,6 +1142,7 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
       boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
     }}
   />
+)}
 </button>
   </div>
 </s-section>
@@ -1289,7 +1317,7 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
       </s-section>
 
       {/* Metafield preview */}
-      {allRules?.length > 0 && (
+      {/* {allRules?.length > 0 && (
         <s-section heading="Saved Metafield">
           <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
             <pre style={{ margin: 0, fontSize: "12px", overflowX: "auto" }}>
@@ -1297,7 +1325,7 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
             </pre>
           </s-box>
         </s-section>
-      )}
+      )} */}
 
       {modalProduct && (
         <TierModal
