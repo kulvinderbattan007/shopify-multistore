@@ -1,13 +1,12 @@
-
-      {
+{
   "cart": {
     "lines": [
       {
         "id": "gid:\/\/shopify\/CartLine\/0",
-        "quantity": 1,
+        "quantity": 3,
         "cost": {
           "subtotalAmount": {
-            "amount": "124.99"
+            "amount": "374.97"
           }
         },
         "merchandise": {
@@ -33,22 +32,6 @@
             "id": "gid:\/\/shopify\/Product\/10433354268965"
           }
         }
-      },
-      {
-        "id": "gid:\/\/shopify\/CartLine\/2",
-        "quantity": 1,
-        "cost": {
-          "subtotalAmount": {
-            "amount": "124.99"
-          }
-        },
-        "merchandise": {
-          "__typename": "ProductVariant",
-          "id": "gid:\/\/shopify\/ProductVariant\/52320714588453",
-          "product": {
-            "id": "gid:\/\/shopify\/Product\/10433354268965"
-          }
-        }
       }
     ]
   },
@@ -60,9 +43,13 @@
     ]
   },
   "shop": {
-    "customDiscountSettings": {
+    "volumeDiscountSettings": {
       "type": "json",
-      "value": "{\"version\":1,\"rules\":[{\"id\":\"abc-combo\",\"name\":\"A+B+C combo variable % off\",\"triggers\":{\"allProductIdsRequired\":[\"gid:\/\/shopify\/Product\/52320714522917\",\"gid:\/\/shopify\/Product\/52320714555685\",\"gid:\/\/shopify\/Product\/52320714588453\"]},\"targets\":[{\"productId\":\"gid:\/\/shopify\/Product\/52320714522917\",\"discountType\":\"PERCENT\",\"discountValue\":30},{\"productId\":\"gid:\/\/shopify\/Product\/52320714555685\",\"discountType\":\"PERCENT\",\"discountValue\":20},{\"productId\":\"gid:\/\/shopify\/Product\/52320714588453\",\"discountType\":\"PERCENT\",\"discountValue\":10}]}]}"
+      "value": "[{\"productId\":\"gid:\/\/shopify\/Product\/10433354268965\",\"productTitle\":\"May Queen MQ1916 Cold Shoulder Fit & Flare Hoco Short Prom Dress\",\"tiers\":[{\"variantId\":\"gid:\/\/shopify\/ProductVariant\/52320714522917\",\"variantTitle\":\"BLACK \/ 2\",\"minQty\":1,\"discount\":10,\"label\":\"10%\"},{\"variantId\":\"gid:\/\/shopify\/ProductVariant\/52320714522917\",\"variantTitle\":\"BLACK \/ 2\",\"minQty\":2,\"discount\":20,\"label\":\"20%\"},{\"variantId\":\"gid:\/\/shopify\/ProductVariant\/52320714522917\",\"variantTitle\":\"BLACK \/ 2\",\"minQty\":3,\"discount\":30,\"label\":\"30%\"},{\"variantId\":\"gid:\/\/shopify\/ProductVariant\/52320714555685\",\"variantTitle\":\"BLACK \/ 4\",\"minQty\":3,\"discount\":33,\"label\":\"33%\"}],\"updatedAt\":\"2026-05-12\"}]"
+    },
+    "cartDiscountSettings": {
+      "type": "json",
+      "value": "{\"version\":1,\"store\":{\"name\":\"app-test-zwydcupy\",\"domain\":\"https:\/\/app-test-zwydcupy.myshopify.com\",\"currencyCode\":\"USD\",\"locale\":\"en-US\",\"storeName\":\"app-test-zwydcupy\"},\"rules\":[{\"variantId\":\"gid:\/\/shopify\/ProductVariant\/52321904492837\",\"variantTitle\":\"\",\"minQty\":3,\"discount\":50,\"label\":\"50% off when you buy 3+\"},{\"variantId\":\"gid:\/\/shopify\/ProductVariant\/52321904525605\",\"variantTitle\":\"\",\"minQty\":4,\"discount\":30,\"label\":\"30% off when you buy 4+\"}]}"
     }
   }
 }

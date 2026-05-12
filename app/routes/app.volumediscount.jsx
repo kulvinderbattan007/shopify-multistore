@@ -104,7 +104,105 @@ export async function loader({ request }) {
     }
   }
 
-  return { savedRules, savedProducts };
+
+
+  // 🔹 Check if automatic app discount already exists
+const discountsResponse = await admin.graphql(`
+  #graphql
+  query {
+    discountNodes(first: 20) {
+      edges {
+        node {
+          id
+          __typename
+
+          discount {
+            __typename
+
+            ... on DiscountCodeBasic {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountAutomaticBasic {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountCodeBxgy {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountAutomaticBxgy {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountCodeFreeShipping {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountAutomaticApp {
+              title
+              status
+
+              appDiscountType {
+                functionId
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`);
+
+const discountsJson = await discountsResponse.json();
+
+console.log("======== FULL DISCOUNTS ========");
+console.dir(discountsJson, { depth: null });
+
+const discounts =
+  discountsJson?.data?.discountNodes?.edges || [];
+
+const existingAppDiscount = discounts.find((d) => {
+
+  const discount = d?.node?.discount;
+
+  console.log("CHECKING:", discount);
+
+  return (
+    discount?.__typename === "DiscountAutomaticApp" &&
+    discount?.title === "Volume discount (Prime App)"
+  );
+});
+
+console.log("======== FOUND APP DISCOUNT ========");
+console.dir(existingAppDiscount, { depth: null });
+
+const isDiscountEnabled = !!existingAppDiscount;
+
+const discountNodeId = existingAppDiscount?.node?.id || null;
+
+console.log("======== FINAL STATE ========");
+console.log({
+  isDiscountEnabled,
+  discountNodeId,
+});
+
+ return {
+  savedRules,
+  savedProducts,
+  isDiscountEnabled,
+  discountNodeId,
+};
 }
 
 // ─── Server: Action ───────────────────────────────────────────────────────────
@@ -229,7 +327,7 @@ if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
     mutation CreateAutomaticDiscount {
       discountAutomaticAppCreate(
         automaticAppDiscount: {
-          title: "Cart line, Order, Shipping discount"
+          title: "Volume discount (Prime App)"
           functionHandle: "discount-function-js"
           discountClasses: [PRODUCT, ORDER, SHIPPING]
           startsAt: "2025-01-01T00:00:00"
@@ -257,14 +355,62 @@ if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
     };
   }
 
-  return {
-    actionType: "ENABLE_CUSTOM_DISCOUNT",
-    success: true,
-    discountId:
-      json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
-  };
+ return {
+  actionType: "ENABLE_CUSTOM_DISCOUNT",
+  success: true,
+  discountId:
+    json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
+};
 }
 
+// ── Disable custom discount ──
+if (actionType === "DISABLE_CUSTOM_DISCOUNT") {
+
+  const discountNodeId = formData.get("discountNodeId");
+
+  if (!discountNodeId) {
+    return {
+      actionType: "DISABLE_CUSTOM_DISCOUNT",
+      errors: ["Discount node ID missing."],
+    };
+  }
+
+  const response = await admin.graphql(
+    `#graphql
+    mutation discountAutomaticDelete($id: ID!) {
+      discountAutomaticDelete(id: $id) {
+        deletedAutomaticDiscountId
+
+        userErrors {
+          field
+          message
+        }
+      }
+    }`,
+    {
+      variables: {
+        id: discountNodeId,
+      },
+    }
+  );
+
+  const json = await response.json();
+
+  const errors =
+    json?.data?.discountAutomaticDelete?.userErrors || [];
+
+  if (errors.length) {
+    return {
+      actionType: "DISABLE_CUSTOM_DISCOUNT",
+      errors: errors.map((e) => e.message),
+    };
+  }
+
+  return {
+    actionType: "DISABLE_CUSTOM_DISCOUNT",
+    success: true,
+  };
+}
 
 if (actionType === "REMOVE_PRODUCT") {
   const productId = formData.get("productId");
@@ -727,6 +873,14 @@ export default function VolumeDiscount() {
   const [modalProduct, setModalProduct] = useState(null);
   const [allRules, setAllRules] = useState(loaderData?.savedRules || []);
 
+  const [discountEnabled, setDiscountEnabled] = useState(
+  loaderData?.isDiscountEnabled || false
+  );
+  const [discountNodeId, setDiscountNodeId] = useState(
+  loaderData?.discountNodeId || null
+  );
+  
+
   const searchBarRef = useRef(null);
   const dropdownPortalRef = useRef(null);
   const searchDebounceRef = useRef(null);
@@ -768,18 +922,47 @@ export default function VolumeDiscount() {
     }
   }
   // ← Add this:
-  if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
-    if (fetcher.data.success) {
-      shopify.toast.show("Custom discount enabled!");
+if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
+
+  if (fetcher.data.success) {
+
+    setDiscountEnabled(true);
+
+    if (fetcher.data.discountId) {
+      setDiscountNodeId(fetcher.data.discountId);
     }
-    if (fetcher.data.errors?.length) {
-      shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
-    }
+
+    shopify.toast.show("Custom discount enabled!");
   }
+
+  if (fetcher.data.errors?.length) {
+    shopify.toast.show(
+      fetcher.data.errors.join(", "),
+      { isError: true }
+    );
+  }
+}
 
   if (fetcher.data.actionType === "REMOVE_PRODUCT" && fetcher.data.success) {
   setAllRules(fetcher.data.updatedRules);
   shopify.toast.show("Product removed.");
+}
+
+if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
+
+  if (fetcher.data.success) {
+    setDiscountEnabled(false);
+    setDiscountNodeId(null);
+
+    shopify.toast.show("Custom discount disabled!");
+  }
+
+  if (fetcher.data.errors?.length) {
+    shopify.toast.show(
+      fetcher.data.errors.join(", "),
+      { isError: true }
+    );
+  }
 }
 }, [fetcher.data]);
 
@@ -870,7 +1053,7 @@ export default function VolumeDiscount() {
       </div>
     </div>
 
-    <input
+    {/* <input
       type="checkbox"
       onChange={(e) => {
         if (e.target.checked) {
@@ -881,12 +1064,76 @@ export default function VolumeDiscount() {
         }
       }}
       style={{ width: "18px", height: "18px", cursor: "pointer" }}
-    />
+    /> */}
+
+    <button
+  type="button"
+  onClick={() => {
+
+  // TURN OFF
+  if (discountEnabled) {
+
+    fetcher.submit(
+      {
+        actionType: "DISABLE_CUSTOM_DISCOUNT",
+        discountNodeId,
+      },
+      { method: "post" }
+    );
+
+    return;
+  }
+
+  // TURN ON
+  fetcher.submit(
+    { actionType: "ENABLE_CUSTOM_DISCOUNT" },
+    { method: "post" }
+  );
+}}
+  style={{
+    position: "relative",
+    width: "46px",
+    height: "26px",
+    borderRadius: "999px",
+    border: "none",
+    cursor: discountEnabled ? "default" : "pointer",
+    background: discountEnabled ? "#16a34a" : "#c9cccf",
+    transition: "all 0.2s ease",
+    padding: 0,
+  }}
+>
+  <div
+    style={{
+      position: "absolute",
+      top: "3px",
+      left: discountEnabled ? "23px" : "3px",
+      width: "20px",
+      height: "20px",
+      borderRadius: "50%",
+      background: "#fff",
+      transition: "all 0.2s ease",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+    }}
+  />
+</button>
   </div>
 </s-section>
 
       {/* Search */}
       <s-section heading="Add Products">
+      {/* <pre
+  style={{
+    background: "#111",
+    color: "#0f0",
+    padding: "20px",
+    borderRadius: "10px",
+    overflow: "auto",
+    fontSize: "12px",
+  }}
+> test
+  {JSON.stringify(loaderData, null, 2)}
+</pre> */}
+
         <div ref={searchBarRef} style={{ position: "relative" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", border: `1px solid ${showSuggestions ? "#5c6ac4" : "#c9cccf"}`, borderRadius: "10px", padding: "0 12px", background: "#fff", boxShadow: showSuggestions ? "0 0 0 3px rgba(92,106,196,0.15)" : "none", transition: "border-color 0.15s, box-shadow 0.15s" }}>
             <svg width="16" height="16" viewBox="0 0 20 20" fill="#8c9196" style={{ flexShrink: 0 }}>

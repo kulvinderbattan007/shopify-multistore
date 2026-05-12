@@ -1,39 +1,6 @@
-// // src/logic/default-logic.js
-// // @ts-check
-// import {
-//   DiscountClass,
-// } from "../../generated/api";
-
-// /**
-//  * @typedef {import("../../generated/api").Input} CartInput
-//  * @typedef {import("../../generated/api").CartLinesDiscountsGenerateRunResult} CartLinesDiscountsGenerateRunResult
-//  */
-
-// /**
-//  * Fallback logic for other stores
-//  *
-//  * @param {CartInput} input
-//  * @param {any} config Parsed cartDiscountSettings JSON
-//  * @returns {CartLinesDiscountsGenerateRunResult}
-//  */
-// export function runDefaultLogic(input, config) {
-//   // Simple default: no discount
-//   return { operations: [] };
-// } 
-
-
-
-
-
-
-
-
-
-
-
-
-// src/logic/app-test-volume-logic.js
+// src/logic/default-logic.js
 // @ts-check
+
 import {
   DiscountClass,
   ProductDiscountSelectionStrategy,
@@ -45,38 +12,65 @@ import {
  */
 
 /**
- * Logic for storeName === "app-test-zwydcupy"
- * Uses shop.volumeDiscountSettings metafield for per-product / per-variant
- * quantity-based volume discounts.
+ * Volume discount logic using shop.volumeDiscountSettings.
+ *
+ * Expected metafield value (stringified JSON):
+ * [
+ *   {
+ *     "productId": "gid://shopify/Product/...",
+ *     "productTitle": "...",
+ *     "tiers": [
+ *       { "variantId": "gid://shopify/ProductVariant/...", "minQty": 1, "discount": 10, "label": "10%" },
+ *       { "variantId": "gid://shopify/ProductVariant/...", "minQty": 2, "discount": 20, "label": "20%" },
+ *       ...
+ *     ],
+ *     "updatedAt": "2026-05-12"
+ *   }
+ * ]
  *
  * @param {CartInput} input
- * @param {any} config Parsed volumeDiscountSettings JSON
  * @returns {CartLinesDiscountsGenerateRunResult}
  */
-// export function runAppTestVolumeLogic(input, config) {
-export function runDefaultLogic(input, config) {
+export function runDefaultLogic(input) {
+  // ---- 0. Basic guards ---------------------------------------------------
 
-  
-  console.log("=== RUNNING app-test-volume-logic (storeName: app-test-zwydcupy) ===");
-
-  // No lines – no discounts
-  if (!input.cart.lines?.length) {
+  // No lines -> no discounts
+  if (!input?.cart?.lines?.length) {
     return { operations: [] };
   }
 
   // Only apply if PRODUCT discount class is active
-  const hasProductDiscountClass = input.discount.discountClasses.includes(
-    DiscountClass.Product,
-  );
+  const hasProductDiscountClass =
+    Array.isArray(input.discount?.discountClasses) &&
+    input.discount.discountClasses.includes(DiscountClass.Product);
 
   if (!hasProductDiscountClass) {
     return { operations: [] };
   }
 
-  // For volumeDiscountSettings we expect an *array* of product configs
-  // like: [{ productId, productTitle, tiers: [...], updatedAt }]
+  // ---- 1. Parse shop.volumeDiscountSettings.value ------------------------
+
+  const metafield = input.shop?.volumeDiscountSettings;
+
+  if (!metafield || typeof metafield.value !== "string" || !metafield.value.trim()) {
+    // No config -> no discounts
+    return { operations: [] };
+  }
+
   /** @type {any[]} */
-  const rawRules = Array.isArray(config) ? config : [];
+  let rawRules = [];
+  try {
+    const parsed = JSON.parse(metafield.value);
+    if (!Array.isArray(parsed)) {
+      // We expect an array of product configs
+      return { operations: [] };
+    }
+    rawRules = parsed;
+  } catch (e) {
+    // JSON.parse error – never let this crash the function
+    console.log("Failed to parse shop.volumeDiscountSettings.value:", e);
+    return { operations: [] };
+  }
 
   if (!rawRules.length) {
     return { operations: [] };
@@ -85,7 +79,11 @@ export function runDefaultLogic(input, config) {
   /** @type {CartLinesDiscountsGenerateRunResult["operations"][number]["productDiscountsAdd"]["candidates"]} */
   const candidates = [];
 
+  // ---- 2. Per-line volume discounts --------------------------------------
+
   for (const line of input.cart.lines) {
+    if (!line) continue;
+
     const merch = line.merchandise;
 
     // Only handle ProductVariant lines
@@ -95,7 +93,9 @@ export function runDefaultLogic(input, config) {
     const variantId = merch.id;
     const quantity = line.quantity;
 
-    if (!productId || !variantId || !quantity) continue;
+    if (!productId || !variantId || typeof quantity !== "number" || quantity <= 0) {
+      continue;
+    }
 
     // Find config for this product
     const productConfig = rawRules.find(
@@ -105,14 +105,15 @@ export function runDefaultLogic(input, config) {
 
     let bestTier = null;
 
-    // Choose the tier with the highest minQty that is <= quantity
+    // Choose the tier with the highest minQty that is <= this line's quantity
     for (const tier of productConfig.tiers) {
       if (!tier) continue;
 
       // If a tier specifies a variantId, it must match this line's variant
       if (tier.variantId && tier.variantId !== variantId) continue;
 
-      if (typeof tier.minQty !== "number") continue;
+      if (typeof tier.minQty !== "number" || tier.minQty <= 0) continue;
+
       if (quantity >= tier.minQty) {
         if (!bestTier || tier.minQty > bestTier.minQty) {
           bestTier = tier;
@@ -142,9 +143,12 @@ export function runDefaultLogic(input, config) {
     });
   }
 
+  // No applicable tiers -> no operations
   if (!candidates.length) {
     return { operations: [] };
   }
+
+  // ---- 3. Return discounts for all eligible lines ------------------------
 
   return {
     operations: [
