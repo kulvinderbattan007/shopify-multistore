@@ -11,7 +11,7 @@ export const loader = async ({ request }) => {
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData();
+  const { apiKey } = useLoaderData(); 
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -20,8 +20,11 @@ export default function App() {
         {/* <s-link href="/app/additional">Additional page tyest</s-link>
         <s-link href="/app/discount">Discount</s-link>  */}
         {/* <s-link href="/app/productbanner">Product Banner</s-link> */}
-        <s-link href="/app/volumediscount">Volume discount</s-link>
+        <s-link href="/app/volumediscount">Discount Rules</s-link>
+        <s-link href="/app/faq">Faq</s-link>
+
         <s-link href="/app/plan">Plan</s-link>
+        <s-link href="/app/contact">Contact</s-link>
 
 
 

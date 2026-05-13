@@ -291,7 +291,7 @@ export async function action({ request }) {
   return { error: "Invalid action" };
 }
 
-export default function Plan() {
+export default function Faq() {
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif", minHeight: "100vh", background: "#F5F6FF", padding: "0" }}>
       <style>{`
@@ -560,51 +560,56 @@ export default function Plan() {
       <div className="vd-page">
 
         
-<div
-  style={{
-    background: "#fff",
-    border: "1px solid #E8E9F5",
-    borderRadius: "16px",
-    padding: "2rem",
-    marginBottom: "2rem",
-    textAlign: "center",
-  }}
->
-  <div
-    style={{
-      fontSize: "12px",
-      fontWeight: "600",
-      color: "#5C6AC4",
-      letterSpacing: "0.08em",
-      textTransform: "uppercase",
-      marginBottom: "12px",
-    }}
-  >
-    {/* Plan */}
-  </div>
+{/* FAQ Section */}
+            <div className="vd-faq">
+              <div className="vd-section-label">Frequently asked questions</div>
 
-  <h2
-    style={{
-      fontFamily: "'DM Serif Display', serif",
-      fontSize: "2rem",
-      color: "#2B2D42",
-      marginBottom: "10px",
-      fontWeight: "400",
-    }}
-  >
-    Plan
-  </h2>
+              <div className="vd-faq-item">
+                <div className="vd-faq-question">
+                  How do discount rules work?
+                </div>
+                <div className="vd-faq-answer">
+                  You can create quantity-based rules for products or variants. When a customer adds items and meets the required quantity, the discount is applied automatically in the cart.
+                </div>
+              </div>
 
-  <p
-    style={{
-      fontSize: "15px",
-      color: "#6B6F8A",
-      lineHeight: "1.7",
-    }}
-  >
-    <strong>Rulex Discounts</strong> is free of any charge! 🎉
-  </p>
-</div>
+              <div className="vd-faq-item">
+                <div className="vd-faq-question">
+                  Do I need discount codes?
+                </div>
+                <div className="vd-faq-answer">
+                  No. Discounts are applied automatically when the quantity conditions are met — no coupon codes required.
+                </div>
+              </div>
+
+              <div className="vd-faq-item">
+                <div className="vd-faq-question">
+                  Can I create multiple tiers?
+                </div>
+                <div className="vd-faq-answer">
+                  Yes, you can define unlimited tiers like 5+, 10+, 20+ quantities with different discount percentages.
+                </div>
+              </div>
+
+              <div className="vd-faq-item">
+                <div className="vd-faq-question">
+                  Can I apply rules to specific variants?
+                </div>
+                <div className="vd-faq-answer">
+                  Yes, rules can be applied to specific products or even individual variants depending on your setup.
+                </div>
+              </div>
+
+              <div className="vd-faq-item">
+                <div className="vd-faq-question">
+                  Why is my discount not applying?
+                </div>
+                <div className="vd-faq-answer">
+                  Make sure the cart meets the minimum quantity defined in your rule and that the rule is active.
+                </div>
+              </div>
+
+            </div>
 
 
       </div>
