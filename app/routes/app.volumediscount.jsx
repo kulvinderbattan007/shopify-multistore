@@ -1038,7 +1038,7 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
   return (
     <s-page heading="Volume Discounts">
 
-    <s-section heading="Enable Custom Discount..">
+    <s-section heading="Discount status">
   <div
     style={{
       padding: "12px",
@@ -1056,7 +1056,7 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
       </div>
       <div style={{ fontSize: "12px", color: "#6d7175" }}>
         {/* This will activate your Shopify discount function */}
-        This will activate your Shopify discount on the products which you will select below.
+        Automatically apply volume discounts when customers meet your quantity rules.
       </div>
     </div>
 

@@ -291,7 +291,7 @@ export async function action({ request }) {
   return { error: "Invalid action" };
 }
 
-export default function Index() {
+export default function Plan() {
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif", minHeight: "100vh", background: "#F5F6FF", padding: "0" }}>
       <style>{`
@@ -559,242 +559,53 @@ export default function Index() {
 
       <div className="vd-page">
 
-        {/* Hero */}
-        <div className="vd-hero">
-          <div className="vd-hero-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            
-{/* <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 1200 1200" fill="none">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="1200" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#4959BD "/>
-      <stop offset="1" stop-color="#4959BD "/>
-    </linearGradient>
-  </defs>
-  <rect x="40" y="40" width="1120" height="1120" rx="120" fill="url(#bg)"/>
-  <g fill="white">
-    <path d="M250 290C250 272 264 258 282 258H370C385 258 398 268 402 283L430 390H700C718 390 732 404 732 422C732 440 718 454 700 454H445L470 540H760C778 540 792 554 792 572C792 590 778 604 760 604H450C435 604 422 594 418 580L350 320H282C264 320 250 306 250 290Z"/>
-    <circle cx="470" cy="720" r="42"/>
-    <circle cx="720" cy="720" r="42"/>
-    <circle cx="760" cy="360" r="120"/>
-    <text x="760" y="390" font-size="120" text-anchor="middle" fill="#4F46FF" font-family="Arial" font-weight="bold">%</text>
-    <text x="600" y="920" font-size="190" text-anchor="middle" font-family="Arial" font-weight="bold">Rulex</text>
-    <text x="600" y="1030" font-size="72" text-anchor="middle" font-family="Arial" letter-spacing="18">DISCOUNTS</text>
-  </g>
-</svg> */}
-            Volume Discount App
-          </div>
-          <h1>Boost sales with<br />smart quantity discounts</h1>
-          <p>Reward customers for buying more. Set flexible quantity tiers and watch your average order value climb — automatically, no coupon codes needed.</p>
-          <div className="vd-hero-actions">
-            <s-link href="/app/volumediscount">
-              <span className="btn-white">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Create discount rule
-              </span>
-            </s-link>
-            <s-link href="/app/volumediscount">
-              <span className="btn-outline-white">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                View all rules
-              </span>
-            </s-link>
-          </div>
-        </div>
+        
+<div
+  style={{
+    background: "#fff",
+    border: "1px solid #E8E9F5",
+    borderRadius: "16px",
+    padding: "2rem",
+    marginBottom: "2rem",
+    textAlign: "center",
+  }}
+>
+  <div
+    style={{
+      fontSize: "12px",
+      fontWeight: "600",
+      color: "#5C6AC4",
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      marginBottom: "12px",
+    }}
+  >
+    {/* Plan */}
+  </div>
 
-        {/* Stats */}
-        <div className="vd-stats">
-          <div className="vd-stat-card">
-            <div className="vd-stat-label">Active rules</div>
-            <div className="vd-stat-value">0</div>
-            <div className="vd-stat-sub">No rules yet</div>
-          </div>
-          <div className="vd-stat-card">
-            <div className="vd-stat-label">Discounts applied</div>
-            <div className="vd-stat-value">0</div>
-            <div className="vd-stat-sub">This month</div>
-          </div>
-          <div className="vd-stat-card">
-            <div className="vd-stat-label">Total savings given</div>
-            <div className="vd-stat-value">₹0</div>
-            <div className="vd-stat-sub">Across all orders</div>
-          </div>
-          <div className="vd-stat-card">
-            <div className="vd-stat-label">Avg. order boost</div>
-            <div className="vd-stat-value">—</div>
-            <div className="vd-stat-sub">Needs data</div>
-          </div>
-        </div>
+  <h2
+    style={{
+      fontFamily: "'DM Serif Display', serif",
+      fontSize: "2rem",
+      color: "#2B2D42",
+      marginBottom: "10px",
+      fontWeight: "400",
+    }}
+  >
+    Rulex Discounts
+  </h2>
 
-        {/* How it works */}
-        <div className="vd-steps">
-          <div className="vd-section-label">How it works</div>
-          <div className="vd-steps-grid">
-            <div className="vd-step">
-              <div className="vd-step-num">1</div>
-              <div>
-                <h3>Create a discount rule</h3>
-                <p>Pick a product or entire collection, then define quantity tiers with their discount values.</p>
-              </div>
-            </div>
-            <div className="vd-step">
-              <div className="vd-step-num">2</div>
-              <div>
-                <h3>Customer adds to cart</h3>
-                <p>When a shopper reaches a qualifying quantity, the discount is applied to their cart instantly.</p>
-              </div>
-            </div>
-            <div className="vd-step">
-              <div className="vd-step-num">3</div>
-              <div>
-                <h3>Automatic discounts</h3>
-                <p>Discounts are applied instantly when customers meet the quantity requirements — no codes needed.</p>
-              </div>
-            </div>
-          </div>
-        </div>
+  <p
+    style={{
+      fontSize: "15px",
+      color: "#6B6F8A",
+      lineHeight: "1.7",
+    }}
+  >
+    <strong>Rulex Discounts</strong> is free of any charge! 🎉
+  </p>
+</div>
 
-        {/* Tier example */}
-        <div className="vd-example">
-          <div className="vd-section-label">Example discount tiers</div>
-          <p style={{ fontSize: "13px", color: "#6B6F8A", marginBottom: "1.25rem", lineHeight: 1.6 }}>
-            Here's what a typical volume discount rule looks like. You can set as many tiers as you need.
-          </p>
-          <div className="vd-tier-row">
-            <div className="vd-tier-qty">1+ items</div>
-            <div className="vd-tier-label">Initial buy</div>
-            <div className="vd-tier-discount">2% off</div>
-            {/* <div className="vd-tier-label">Regular price</div>
-            <div style={{ fontSize: "14px", color: "#8B8FA8" }}>No discount</div> */}
-          </div>
-          <div className="vd-tier-row">
-            <div className="vd-tier-qty">5+ items</div>
-            <div className="vd-tier-label">Small bulk buy</div>
-            <div className="vd-tier-discount">5% off</div>
-          </div>
-          <div className="vd-tier-row">
-            <div className="vd-tier-qty">10+ items</div>
-            <div className="vd-tier-label">Medium bulk buy</div>
-            <div className="vd-tier-discount">10% off</div>
-          </div>
-          <div className="vd-tier-row">
-            <div className="vd-tier-qty">20+ items</div>
-            <div className="vd-tier-label">Large bulk buy</div>
-            <div className="vd-tier-discount">20% off</div>
-          </div>
-        </div>
-
-        {/* Features */}
-        <div className="vd-section-label">Features</div>
-        <div className="vd-features">
-          <div className="vd-feature-card">
-            <div className="vd-feature-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-            </div>
-            <h3>Unlimited tiers</h3>
-            <p>Define as many quantity-price tiers as your business needs — no artificial limits.</p>
-          </div>
-          <div className="vd-feature-card">
-            <div className="vd-feature-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
-            </div>
-            <h3>% amount</h3>
-            <p>Offer percentage-based discounts per tier, whichever fits your pricing.</p>
-          </div>
-          <div className="vd-feature-card">
-            <div className="vd-feature-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            </div>
-            <h3>Auto-applied</h3>
-            <p>No coupon codes required. Discounts trigger automatically the moment cart quantities qualify.</p>
-          </div>
-          {/* <div className="vd-feature-card">
-            <div className="vd-feature-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            </div>
-            <h3>Analytics</h3>
-            <p>Track how each rule impacts revenue and average order value over time.</p>
-          </div> */}
-          <div className="vd-feature-card">
-            <div className="vd-feature-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            </div>
-            <h3>Product rules</h3>
-            <p>Apply discount rules to individual products and variants</p>
-          </div>
-          <div className="vd-feature-card">
-            <div className="vd-feature-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-            </div>
-            <h3>One click live</h3>
-            <p>Rules activate instantly across your storefront on one click.</p>
-          </div>
-        </div>
-
-        {/* FAQ Section */}
-            <div className="vd-faq">
-              <div className="vd-section-label">Frequently asked questions</div>
-
-              <div className="vd-faq-item">
-                <div className="vd-faq-question">
-                  How do discount rules work?
-                </div>
-                <div className="vd-faq-answer">
-                  You can create quantity-based rules for products or variants. When a customer adds items and meets the required quantity, the discount is applied automatically in the cart.
-                </div>
-              </div>
-
-              <div className="vd-faq-item">
-                <div className="vd-faq-question">
-                  Do I need discount codes?
-                </div>
-                <div className="vd-faq-answer">
-                  No. Discounts are applied automatically when the quantity conditions are met — no coupon codes required.
-                </div>
-              </div>
-
-              <div className="vd-faq-item">
-                <div className="vd-faq-question">
-                  Can I create multiple tiers?
-                </div>
-                <div className="vd-faq-answer">
-                  Yes, you can define unlimited tiers like 5+, 10+, 20+ quantities with different discount percentages.
-                </div>
-              </div>
-
-              <div className="vd-faq-item">
-                <div className="vd-faq-question">
-                  Can I apply rules to specific variants?
-                </div>
-                <div className="vd-faq-answer">
-                  Yes, rules can be applied to specific products or even individual variants depending on your setup.
-                </div>
-              </div>
-
-              <div className="vd-faq-item">
-                <div className="vd-faq-question">
-                  Why is my discount not applying?
-                </div>
-                <div className="vd-faq-answer">
-                  Make sure the cart meets the minimum quantity defined in your rule and that the rule is active.
-                </div>
-              </div>
-
-            </div>
-
-        {/* CTA strip */}
-        <div className="vd-cta">
-          <div>
-            <h2>Ready to grow your sales?</h2>
-            <p>Create your first volume discount rule in under 2 minutes.</p>
-          </div>
-          <s-link href="/app/volumediscount">
-            <span className="btn-white">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Create discount rule
-            </span>
-          </s-link>
-        </div>
 
       </div>
     </div>
