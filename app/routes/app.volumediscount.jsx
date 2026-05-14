@@ -680,7 +680,9 @@ function TierModal({ product, existingTiers, onClose, onSave, isSaving }) {
           {/* Info banner */}
           <div style={{ background: "#f0f4ff", border: "1px solid #c4cff5", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", fontSize: "12px", color: "#3c4fe0", display: "flex", gap: "8px", alignItems: "flex-start" }}>
             <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style={{ flexShrink: 0, marginTop: "1px" }}><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-            <span>Tiers are configured per variant. The Variant ID is saved to the metafield for use in your discount function.</span>
+            {/* <span>Tiers are configured per variant. The Variant ID is saved to the metafield for use in your discount function.</span> */}
+            <span>Tiers are configured per variant.</span>
+
           </div>
 
           {/* Variant sections */}
@@ -1036,7 +1038,9 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
   }
 
   return (
-    <s-page heading="Volume Discounts">
+    // <s-page heading="Volume Discounts">
+    <s-page heading="Rulex Discounts">
+
 
     <s-section heading="Discount status">
   <div

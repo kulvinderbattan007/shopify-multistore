@@ -562,27 +562,29 @@ export default function Index() {
         {/* Hero */}
         <div className="vd-hero">
           <div className="vd-hero-badge">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            {/* <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> */}
             
-{/* <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 1200 1200" fill="none">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="1200" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#4959BD "/>
-      <stop offset="1" stop-color="#4959BD "/>
-    </linearGradient>
-  </defs>
-  <rect x="40" y="40" width="1120" height="1120" rx="120" fill="url(#bg)"/>
-  <g fill="white">
-    <path d="M250 290C250 272 264 258 282 258H370C385 258 398 268 402 283L430 390H700C718 390 732 404 732 422C732 440 718 454 700 454H445L470 540H760C778 540 792 554 792 572C792 590 778 604 760 604H450C435 604 422 594 418 580L350 320H282C264 320 250 306 250 290Z"/>
-    <circle cx="470" cy="720" r="42"/>
-    <circle cx="720" cy="720" r="42"/>
-    <circle cx="760" cy="360" r="120"/>
-    <text x="760" y="390" font-size="120" text-anchor="middle" fill="#4F46FF" font-family="Arial" font-weight="bold">%</text>
-    <text x="600" y="920" font-size="190" text-anchor="middle" font-family="Arial" font-weight="bold">Rulex</text>
-    <text x="600" y="1030" font-size="72" text-anchor="middle" font-family="Arial" letter-spacing="18">DISCOUNTS</text>
-  </g>
-</svg> */}
-            Volume Discount App
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 1200 1200" fill="none">
+              <defs>
+                <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="1200" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#4959BD " />
+                  <stop offset="1" stop-color="#4959BD " />
+                </linearGradient>
+              </defs>
+              <rect x="40" y="40" width="1120" height="1120" rx="120" fill="url(#bg)" />
+              <g fill="white">
+                <path d="M250 290C250 272 264 258 282 258H370C385 258 398 268 402 283L430 390H700C718 390 732 404 732 422C732 440 718 454 700 454H445L470 540H760C778 540 792 554 792 572C792 590 778 604 760 604H450C435 604 422 594 418 580L350 320H282C264 320 250 306 250 290Z" />
+                <circle cx="470" cy="720" r="42" />
+                <circle cx="720" cy="720" r="42" />
+                <circle cx="760" cy="360" r="120" />
+                <text x="760" y="390" font-size="120" text-anchor="middle" fill="#4F46FF" font-family="Arial" font-weight="bold">%</text>
+                <text x="600" y="920" font-size="190" text-anchor="middle" font-family="Arial" font-weight="bold">Rulex</text>
+                <text x="600" y="1030" font-size="72" text-anchor="middle" font-family="Arial" letter-spacing="18">DISCOUNTS</text>
+              </g>
+            </svg>
+            {/* Volume Discount App */}
+            Rulex Discount App
+
           </div>
           <h1>Boost sales with<br />smart quantity discounts</h1>
           <p>Reward customers for buying more. Set flexible quantity tiers and watch your average order value climb — automatically, no coupon codes needed.</p>
@@ -603,7 +605,7 @@ export default function Index() {
         </div>
 
         {/* Stats */}
-        <div className="vd-stats">
+        {/* <div className="vd-stats">
           <div className="vd-stat-card">
             <div className="vd-stat-label">Active rules</div>
             <div className="vd-stat-value">0</div>
@@ -624,7 +626,7 @@ export default function Index() {
             <div className="vd-stat-value">—</div>
             <div className="vd-stat-sub">Needs data</div>
           </div>
-        </div>
+        </div> */}
 
         {/* How it works */}
         <div className="vd-steps">
