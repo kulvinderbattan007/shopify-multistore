@@ -7,6 +7,32 @@ import { addDocumentResponseHeaders } from "./shopify.server";
 
 export const streamTimeout = 5000;
 
+
+// ---- Keep-alive ping to prevent Render free instance from sleeping --------
+let keepAliveStarted = false;
+
+function startKeepAlivePing() {
+  if (keepAliveStarted) return; // prevent multiple intervals on hot reload
+  keepAliveStarted = true;
+
+  const PING_URL = "https://shopify-multistore.onrender.com";
+  const INTERVAL_MS = 14 * 60 * 1000; // 14 minutes
+
+  setInterval(async () => {
+    try {
+      const res = await fetch(PING_URL);
+      console.log(`[KeepAlive] Pinged ${PING_URL} - Status: ${res.status}`);
+    } catch (err) {
+      console.error(`[KeepAlive] Ping failed:`, err.message);
+    }
+  }, INTERVAL_MS);
+
+  console.log("[KeepAlive] Started - pinging every 14 minutes.");
+}
+
+startKeepAlivePing();
+// --------------------------------------------------------------------------
+
 export default async function handleRequest(
   request,
   responseStatusCode,
