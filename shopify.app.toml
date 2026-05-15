@@ -6,7 +6,7 @@ name = "Rulex Discounts"
 
 
 #application_url = "https://shopify-multistore.onrender.com"
-application_url = "https://shopify-multistore.onrender.com/app"
+application_url = "https://shopify-multistore.onrender.com"
 
 
 embedded = true
