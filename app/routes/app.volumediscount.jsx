@@ -166,8 +166,8 @@ const discountsResponse = await admin.graphql(`
 
 const discountsJson = await discountsResponse.json();
 
-console.log("======== FULL DISCOUNTS ========");
-console.dir(discountsJson, { depth: null });
+// console.log("======== FULL DISCOUNTS ========");
+// console.dir(discountsJson, { depth: null });
 
 const discounts =
   discountsJson?.data?.discountNodes?.edges || [];
@@ -176,7 +176,7 @@ const existingAppDiscount = discounts.find((d) => {
 
   const discount = d?.node?.discount;
 
-  console.log("CHECKING:", discount);
+  // console.log("CHECKING:", discount);
 
   return (
     discount?.__typename === "DiscountAutomaticApp" &&
@@ -184,18 +184,18 @@ const existingAppDiscount = discounts.find((d) => {
   );
 });
 
-console.log("======== FOUND APP DISCOUNT ========");
-console.dir(existingAppDiscount, { depth: null });
+// console.log("======== FOUND APP DISCOUNT ========");
+// console.dir(existingAppDiscount, { depth: null });
 
 const isDiscountEnabled = !!existingAppDiscount;
 
 const discountNodeId = existingAppDiscount?.node?.id || null;
 
-console.log("======== FINAL STATE ========");
-console.log({
-  isDiscountEnabled,
-  discountNodeId,
-});
+// console.log("======== FINAL STATE ========");
+// console.log({
+//   isDiscountEnabled,
+//   discountNodeId,
+// });
 
  return {
   savedRules,
@@ -214,7 +214,7 @@ export async function action({ request }) {
 
   // ── Search / Browse products ──
   if (actionType === "SEARCH_PRODUCTS") {
-    console.log("ffff");
+    // console.log("ffff");
     const raw = formData.get("query");
     const searchTerm = typeof raw === "string" ? raw.trim() : "";
     const variables = searchTerm.length > 0 ? { query: `title:${searchTerm}` } : {};
