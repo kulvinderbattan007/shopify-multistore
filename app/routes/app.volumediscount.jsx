@@ -16,7 +16,7 @@ const METAFIELD_TYPE = "json";
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
 
-
+console.log("admin-admin-admin", admin);
   // Ensure definition exists (safe to call repeatedly)
   await admin.graphql(
     `#graphql
