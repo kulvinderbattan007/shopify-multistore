@@ -18,11 +18,11 @@ automatically_update_urls_on_dev = true
 api_version = "2026-07"
 
   [[webhooks.subscriptions]]
-  uri = "/app/webhooks/app/uninstalled"
+  uri = "/webhooks/app/uninstalled"
   topics = [ "app/uninstalled" ]
 
   [[webhooks.subscriptions]]
-  uri = "/app/webhooks/app/scopes_update"
+  uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
 [access_scopes]

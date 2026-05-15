@@ -13,10 +13,45 @@ const METAFIELD_TYPE = "json";
 
 // ─── Server: Loader ───────────────────────────────────────────────────────────
 
-export async function loader({ request }) {
-  const { admin } = await authenticate.admin(request);
 
-console.log("admin-admin-admin", admin);
+
+// ─── Server: Action ───────────────────────────────────────────────────────────
+
+// ─── REPLACE ONLY THE loader() AND action() FUNCTIONS in app.volumediscount.jsx ───
+// Keep everything else (imports, helpers, components, default export) exactly as-is.
+
+// ─── Server: Loader ───────────────────────────────────────────────────────────
+
+export async function loader({ request }) {
+  const url = new URL(request.url);
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("[volumediscount/loader] LOADER HIT");
+  console.log("[volumediscount/loader] Full URL:", request.url);
+  console.log("[volumediscount/loader] Is .data request:", request.url.includes(".data"));
+  console.log("[volumediscount/loader] shop param:", url.searchParams.get("shop"));
+  console.log("[volumediscount/loader] id_token present:", !!url.searchParams.get("id_token"));
+  console.log("[volumediscount/loader] Authorization header:", request.headers.get("Authorization") ? "PRESENT" : "MISSING");
+  console.log("[volumediscount/loader] Cookie:", request.headers.get("cookie") ? "PRESENT" : "MISSING");
+
+  let admin;
+  try {
+    console.log("[volumediscount/loader] Calling authenticate.admin()...");
+    const result = await authenticate.admin(request);
+    admin = result.admin;
+    console.log("[volumediscount/loader] ✅ authenticate.admin() succeeded");
+    console.log("[volumediscount/loader] admin object keys:", Object.keys(result));
+  } catch (error) {
+    console.log("[volumediscount/loader] ❌ authenticate.admin() FAILED");
+    console.log("[volumediscount/loader] Error type:", error?.constructor?.name);
+    console.log("[volumediscount/loader] Error message:", error?.message);
+    console.log("[volumediscount/loader] Error status:", error?.status);
+    console.log("[volumediscount/loader] This is why you get 401 ↑");
+    throw error;
+  }
+
+  console.log("[volumediscount/loader] Ensuring metafield definition exists...");
+
   // Ensure definition exists (safe to call repeatedly)
   await admin.graphql(
     `#graphql
@@ -33,6 +68,8 @@ console.log("admin-admin-admin", admin);
     }`
   );
 
+  console.log("[volumediscount/loader] Fetching saved metafield...");
+
   const metafieldResponse = await admin.graphql(
     `#graphql
     query GetVolumeDiscountMetafield {
@@ -48,21 +85,29 @@ console.log("admin-admin-admin", admin);
   );
 
   const metafieldJson = await metafieldResponse.json();
+  console.log("[volumediscount/loader] Metafield raw response errors:", metafieldJson?.errors || "none");
+
   const metafield = metafieldJson?.data?.shop?.metafield;
   let savedRules = [];
 
   if (metafield) {
     try {
       savedRules = metafield.jsonValue ?? JSON.parse(metafield.value) ?? [];
+      console.log("[volumediscount/loader] ✅ Loaded", savedRules.length, "saved rule(s)");
     } catch {
+      console.log("[volumediscount/loader] ⚠️  Could not parse metafield value");
       savedRules = [];
     }
+  } else {
+    console.log("[volumediscount/loader] ℹ️  No metafield found yet (first run)");
   }
 
   // Fetch full product + variant details for saved rules
   let savedProducts = [];
   if (Array.isArray(savedRules) && savedRules.length > 0) {
     const productIds = savedRules.map((r) => r.productId).filter(Boolean);
+    console.log("[volumediscount/loader] Fetching product details for", productIds.length, "product(s)...");
+
     if (productIds.length > 0) {
       const aliases = productIds
         .map(
@@ -100,123 +145,100 @@ console.log("admin-admin-admin", admin);
       const productsJson = await productsResponse.json();
       if (productsJson?.data) {
         savedProducts = Object.values(productsJson.data).filter(Boolean);
+        console.log("[volumediscount/loader] ✅ Fetched", savedProducts.length, "product(s)");
       }
     }
   }
 
+  console.log("[volumediscount/loader] Checking for existing app discount...");
 
-
-  // 🔹 Check if automatic app discount already exists
-const discountsResponse = await admin.graphql(`
-  #graphql
-  query {
-    discountNodes(first: 20) {
-      edges {
-        node {
-          id
-          __typename
-
-          discount {
+  const discountsResponse = await admin.graphql(`
+    #graphql
+    query {
+      discountNodes(first: 20) {
+        edges {
+          node {
+            id
             __typename
-
-            ... on DiscountCodeBasic {
-              title
-              summary
-              status
-            }
-
-            ... on DiscountAutomaticBasic {
-              title
-              summary
-              status
-            }
-
-            ... on DiscountCodeBxgy {
-              title
-              summary
-              status
-            }
-
-            ... on DiscountAutomaticBxgy {
-              title
-              summary
-              status
-            }
-
-            ... on DiscountCodeFreeShipping {
-              title
-              summary
-              status
-            }
-
-            ... on DiscountAutomaticApp {
-              title
-              status
-
-              appDiscountType {
-                functionId
+            discount {
+              __typename
+              ... on DiscountCodeBasic { title summary status }
+              ... on DiscountAutomaticBasic { title summary status }
+              ... on DiscountCodeBxgy { title summary status }
+              ... on DiscountAutomaticBxgy { title summary status }
+              ... on DiscountCodeFreeShipping { title summary status }
+              ... on DiscountAutomaticApp {
+                title
+                status
+                appDiscountType { functionId }
               }
             }
           }
         }
       }
     }
-  }
-`);
+  `);
 
-const discountsJson = await discountsResponse.json();
+  const discountsJson = await discountsResponse.json();
+  const discounts = discountsJson?.data?.discountNodes?.edges || [];
+  console.log("[volumediscount/loader] Total discount nodes found:", discounts.length);
 
-// console.log("======== FULL DISCOUNTS ========");
-// console.dir(discountsJson, { depth: null });
+  const existingAppDiscount = discounts.find((d) => {
+    const discount = d?.node?.discount;
+    return (
+      discount?.__typename === "DiscountAutomaticApp" &&
+      discount?.title === "Volume discount (Prime App)"
+    );
+  });
 
-const discounts =
-  discountsJson?.data?.discountNodes?.edges || [];
+  const isDiscountEnabled = !!existingAppDiscount;
+  const discountNodeId = existingAppDiscount?.node?.id || null;
 
-const existingAppDiscount = discounts.find((d) => {
+  console.log("[volumediscount/loader] isDiscountEnabled:", isDiscountEnabled);
+  console.log("[volumediscount/loader] discountNodeId:", discountNodeId);
+  console.log("[volumediscount/loader] ✅ Loader complete, returning data");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-  const discount = d?.node?.discount;
-
-  // console.log("CHECKING:", discount);
-
-  return (
-    discount?.__typename === "DiscountAutomaticApp" &&
-    discount?.title === "Volume discount (Prime App)"
-  );
-});
-
-// console.log("======== FOUND APP DISCOUNT ========");
-// console.dir(existingAppDiscount, { depth: null });
-
-const isDiscountEnabled = !!existingAppDiscount;
-
-const discountNodeId = existingAppDiscount?.node?.id || null;
-
-// console.log("======== FINAL STATE ========");
-// console.log({
-//   isDiscountEnabled,
-//   discountNodeId,
-// });
-
- return {
-  savedRules,
-  savedProducts,
-  isDiscountEnabled,
-  discountNodeId,
-};
+  return {
+    savedRules,
+    savedProducts,
+    isDiscountEnabled,
+    discountNodeId,
+  };
 }
 
 // ─── Server: Action ───────────────────────────────────────────────────────────
 
 export async function action({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const url = new URL(request.url);
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("[volumediscount/action] ACTION HIT");
+  console.log("[volumediscount/action] Full URL:", request.url);
+  console.log("[volumediscount/action] shop param:", url.searchParams.get("shop"));
+  console.log("[volumediscount/action] Authorization header:", request.headers.get("Authorization") ? "PRESENT" : "MISSING");
+
+  let admin;
+  try {
+    console.log("[volumediscount/action] Calling authenticate.admin()...");
+    const result = await authenticate.admin(request);
+    admin = result.admin;
+    console.log("[volumediscount/action] ✅ authenticate.admin() succeeded");
+  } catch (error) {
+    console.log("[volumediscount/action] ❌ authenticate.admin() FAILED:", error?.message);
+    throw error;
+  }
+
   const formData = await request.formData();
   const actionType = formData.get("actionType");
+  console.log("[volumediscount/action] actionType:", actionType);
 
   // ── Search / Browse products ──
   if (actionType === "SEARCH_PRODUCTS") {
-    // console.log("ffff");
     const raw = formData.get("query");
     const searchTerm = typeof raw === "string" ? raw.trim() : "";
+    console.log("[volumediscount/action] SEARCH_PRODUCTS searchTerm:", searchTerm || "(browse all)");
+
     const variables = searchTerm.length > 0 ? { query: `title:${searchTerm}` } : {};
 
     const response = await admin.graphql(
@@ -251,8 +273,10 @@ export async function action({ request }) {
     );
 
     const json = await response.json();
-    if (json.errors) console.error("Shopify GraphQL errors:", JSON.stringify(json.errors));
+    if (json.errors) console.error("[volumediscount/action] GraphQL errors:", JSON.stringify(json.errors));
     const products = json?.data?.products?.edges?.map((e) => e.node) || [];
+    console.log("[volumediscount/action] ✅ SEARCH_PRODUCTS found", products.length, "product(s)");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     return { actionType: "SEARCH_PRODUCTS", products };
   }
 
@@ -262,23 +286,18 @@ export async function action({ request }) {
     let rules;
     try {
       rules = JSON.parse(rulesRaw);
+      console.log("[volumediscount/action] SAVE_VOLUME_RULES parsed", rules.length, "rule(s)");
     } catch {
+      console.log("[volumediscount/action] ❌ SAVE_VOLUME_RULES invalid JSON");
       return { actionType: "SAVE_VOLUME_RULES", errors: ["Invalid rules data."] };
     }
 
-    const shopResponse = await admin.graphql(
-  `#graphql
-  query GetShopId {
-    shop {
-      id
-    }
-  }`
-);
+    const shopResponse = await admin.graphql(`#graphql query GetShopId { shop { id } }`);
     const shopJson = await shopResponse.json();
     const shopId = shopJson?.data?.shop?.id;
+    console.log("[volumediscount/action] shopId:", shopId);
 
-    if (!shopId)
-      return { actionType: "SAVE_VOLUME_RULES", errors: ["Unable to resolve shop ID."] };
+    if (!shopId) return { actionType: "SAVE_VOLUME_RULES", errors: ["Unable to resolve shop ID."] };
 
     const mutation = await admin.graphql(
       `#graphql
@@ -293,9 +312,9 @@ export async function action({ request }) {
           metafields: [
             {
               ownerId: shopId,
-              namespace: METAFIELD_NAMESPACE,
-              key: METAFIELD_KEY,
-              type: METAFIELD_TYPE,
+              namespace: "volume_discount_settings",
+              key: "product_volume_rules",
+              type: "json",
               value: JSON.stringify(rules),
             },
           ],
@@ -306,10 +325,13 @@ export async function action({ request }) {
     const mutationJson = await mutation.json();
     const userErrors = mutationJson?.data?.metafieldsSet?.userErrors || [];
     if (userErrors.length) {
+      console.log("[volumediscount/action] ❌ SAVE_VOLUME_RULES userErrors:", userErrors);
       return { actionType: "SAVE_VOLUME_RULES", errors: userErrors.map((e) => e.message) };
     }
 
     const saved = mutationJson?.data?.metafieldsSet?.metafields?.[0];
+    console.log("[volumediscount/action] ✅ SAVE_VOLUME_RULES saved successfully");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     try {
       return { actionType: "SAVE_VOLUME_RULES", success: true, savedRules: JSON.parse(saved.value) };
     } catch {
@@ -317,133 +339,124 @@ export async function action({ request }) {
     }
   }
 
-
   // ── Enable custom discount ──
-if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
-  const { admin } = await authenticate.admin(request);
+  if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
+    console.log("[volumediscount/action] ENABLE_CUSTOM_DISCOUNT called");
 
-  const response = await admin.graphql(
-    `#graphql
-    mutation CreateAutomaticDiscount {
-      discountAutomaticAppCreate(
-        automaticAppDiscount: {
-          title: "Volume discount (Prime App)"
-          functionHandle: "discount-function-js"
-          discountClasses: [PRODUCT, ORDER, SHIPPING]
-          startsAt: "2025-01-01T00:00:00"
+    const response = await admin.graphql(
+      `#graphql
+      mutation CreateAutomaticDiscount {
+        discountAutomaticAppCreate(
+          automaticAppDiscount: {
+            title: "Volume discount (Prime App)"
+            functionHandle: "discount-function-js"
+            discountClasses: [PRODUCT, ORDER, SHIPPING]
+            startsAt: "2025-01-01T00:00:00"
+          }
+        ) {
+          automaticAppDiscount { discountId }
+          userErrors { field message }
         }
-      ) {
-        automaticAppDiscount {
-          discountId
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }`
-  );
+      }`
+    );
 
-  const json = await response.json();
+    const json = await response.json();
+    const errors = json?.data?.discountAutomaticAppCreate?.userErrors || [];
 
-  const errors = json?.data?.discountAutomaticAppCreate?.userErrors || [];
+    if (errors.length) {
+      console.log("[volumediscount/action] ❌ ENABLE_CUSTOM_DISCOUNT errors:", errors);
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      return { actionType: "ENABLE_CUSTOM_DISCOUNT", errors: errors.map((e) => e.message) };
+    }
 
-  if (errors.length) {
+    console.log("[volumediscount/action] ✅ ENABLE_CUSTOM_DISCOUNT success");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     return {
       actionType: "ENABLE_CUSTOM_DISCOUNT",
-      errors: errors.map((e) => e.message),
+      success: true,
+      discountId: json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
     };
   }
 
- return {
-  actionType: "ENABLE_CUSTOM_DISCOUNT",
-  success: true,
-  discountId:
-    json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
-};
-}
+  // ── Disable custom discount ──
+  if (actionType === "DISABLE_CUSTOM_DISCOUNT") {
+    const discountNodeId = formData.get("discountNodeId");
+    console.log("[volumediscount/action] DISABLE_CUSTOM_DISCOUNT discountNodeId:", discountNodeId);
 
-// ── Disable custom discount ──
-if (actionType === "DISABLE_CUSTOM_DISCOUNT") {
+    if (!discountNodeId) {
+      console.log("[volumediscount/action] ❌ DISABLE_CUSTOM_DISCOUNT missing discountNodeId");
+      return { actionType: "DISABLE_CUSTOM_DISCOUNT", errors: ["Discount node ID missing."] };
+    }
 
-  const discountNodeId = formData.get("discountNodeId");
-
-  if (!discountNodeId) {
-    return {
-      actionType: "DISABLE_CUSTOM_DISCOUNT",
-      errors: ["Discount node ID missing."],
-    };
-  }
-
-  const response = await admin.graphql(
-    `#graphql
-    mutation discountAutomaticDelete($id: ID!) {
-      discountAutomaticDelete(id: $id) {
-        deletedAutomaticDiscountId
-
-        userErrors {
-          field
-          message
+    const response = await admin.graphql(
+      `#graphql
+      mutation discountAutomaticDelete($id: ID!) {
+        discountAutomaticDelete(id: $id) {
+          deletedAutomaticDiscountId
+          userErrors { field message }
         }
-      }
-    }`,
-    {
-      variables: {
-        id: discountNodeId,
-      },
+      }`,
+      { variables: { id: discountNodeId } }
+    );
+
+    const json = await response.json();
+    const errors = json?.data?.discountAutomaticDelete?.userErrors || [];
+
+    if (errors.length) {
+      console.log("[volumediscount/action] ❌ DISABLE_CUSTOM_DISCOUNT errors:", errors);
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+      return { actionType: "DISABLE_CUSTOM_DISCOUNT", errors: errors.map((e) => e.message) };
     }
-  );
 
-  const json = await response.json();
-
-  const errors =
-    json?.data?.discountAutomaticDelete?.userErrors || [];
-
-  if (errors.length) {
-    return {
-      actionType: "DISABLE_CUSTOM_DISCOUNT",
-      errors: errors.map((e) => e.message),
-    };
+    console.log("[volumediscount/action] ✅ DISABLE_CUSTOM_DISCOUNT success");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    return { actionType: "DISABLE_CUSTOM_DISCOUNT", success: true };
   }
 
-  return {
-    actionType: "DISABLE_CUSTOM_DISCOUNT",
-    success: true,
-  };
-}
+  // ── Remove product ──
+  if (actionType === "REMOVE_PRODUCT") {
+    const productId = formData.get("productId");
+    console.log("[volumediscount/action] REMOVE_PRODUCT productId:", productId);
 
-if (actionType === "REMOVE_PRODUCT") {
-  const productId = formData.get("productId");
-  let rules = [];
-  try { rules = JSON.parse(formData.get("rules")); } catch {}
+    let rules = [];
+    try { rules = JSON.parse(formData.get("rules")); } catch {}
 
-  const updatedRules = rules.filter(r => r.productId !== productId);
+    const updatedRules = rules.filter((r) => r.productId !== productId);
+    console.log("[volumediscount/action] Rules after removal:", updatedRules.length);
 
-  const shopResponse = await admin.graphql(
-  `#graphql
-  query GetShopId {
-    shop {
-      id
-    }
-  }`
-);
-const shopJson = await shopResponse.json();
-const shopId = shopJson?.data?.shop?.id;
-  // const shopId = shopJson?.data?.shop?.id;
+    const shopResponse = await admin.graphql(`#graphql query GetShopId { shop { id } }`);
+    const shopJson = await shopResponse.json();
+    const shopId = shopJson?.data?.shop?.id;
 
-  await admin.graphql(
-    `#graphql
-    mutation($metafields: [MetafieldsSetInput!]!) {
-      metafieldsSet(metafields: $metafields) {
-        userErrors { field message }
+    await admin.graphql(
+      `#graphql
+      mutation($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          userErrors { field message }
+        }
+      }`,
+      {
+        variables: {
+          metafields: [
+            {
+              ownerId: shopId,
+              namespace: "volume_discount_settings",
+              key: "product_volume_rules",
+              type: "json",
+              value: JSON.stringify(updatedRules),
+            },
+          ],
+        },
       }
-    }`,
-    { variables: { metafields: [{ ownerId: shopId, namespace: METAFIELD_NAMESPACE, key: METAFIELD_KEY, type: METAFIELD_TYPE, value: JSON.stringify(updatedRules) }] } }
-  );
+    );
 
-  return { actionType: "REMOVE_PRODUCT", success: true, updatedRules };
-}
+    console.log("[volumediscount/action] ✅ REMOVE_PRODUCT success");
+    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    return { actionType: "REMOVE_PRODUCT", success: true, updatedRules };
+  }
 
+  console.log("[volumediscount/action] ❌ Unknown actionType:", actionType);
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   return { errors: ["Unknown action."] };
 }
 
