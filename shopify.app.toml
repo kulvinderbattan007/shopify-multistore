@@ -5,7 +5,10 @@ client_id = "0fbd711916afd9456efb05afc00785f5"
 name = "Rulex Discounts"
 
 
-application_url = "https://shopify-multistore.onrender.com"
+#application_url = "https://shopify-multistore.onrender.com"
+application_url = "https://shopify-multistore.onrender.com/app"
+
+
 embedded = true
 
 [build]
@@ -27,7 +30,11 @@ api_version = "2026-07"
 scopes = "read_products,write_cart_transforms,write_discounts,write_metaobject_definitions,write_metaobjects,write_products,read_discounts"
 
 [auth]
-redirect_urls = [ "https://shopify-multistore.onrender.com/api/auth" ]
+#redirect_urls = [ "https://shopify-multistore.onrender.com/api/auth" ]
+redirect_urls = [
+  "https://shopify-multistore.onrender.com/auth/callback",
+  "https://shopify-multistore.onrender.com/auth/shopify/callback"
+]
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
