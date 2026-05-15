@@ -32,6 +32,7 @@ scopes = "read_products,write_cart_transforms,write_discounts,write_metaobject_d
 [auth]
 #redirect_urls = [ "https://shopify-multistore.onrender.com/api/auth" ]
 redirect_urls = [
+  "https://shopify-multistore.onrender.com/api/auth",
   "https://shopify-multistore.onrender.com/auth/callback",
   "https://shopify-multistore.onrender.com/auth/shopify/callback"
 ]
