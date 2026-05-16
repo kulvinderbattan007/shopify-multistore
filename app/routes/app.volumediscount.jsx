@@ -23,6 +23,7 @@ const METAFIELD_TYPE = "json";
 // ─── Server: Loader ───────────────────────────────────────────────────────────
 
 export async function loader({ request }) {
+   console.log("Loader ran volume discount", request);
   const url = new URL(request.url);
 
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -34,11 +35,12 @@ export async function loader({ request }) {
   console.log("[volumediscount/loader] Authorization header:", request.headers.get("Authorization") ? "PRESENT" : "MISSING");
   console.log("[volumediscount/loader] Cookie:", request.headers.get("cookie") ? "PRESENT" : "MISSING");
 
-  let admin;
+  let admin, cors;
   try {
     console.log("[volumediscount/loader] Calling authenticate.admin()...");
     const result = await authenticate.admin(request);
     admin = result.admin;
+    cors = result.cors;
     console.log("[volumediscount/loader] ✅ authenticate.admin() succeeded");
     console.log("[volumediscount/loader] admin object keys:", Object.keys(result));
   } catch (error) {
@@ -50,39 +52,55 @@ export async function loader({ request }) {
     throw error;
   }
 
-  console.log("[volumediscount/loader] Ensuring metafield definition exists...");
+  // console.log("[volumediscount/loader] Ensuring metafield definition exists...");
 
-  // Ensure definition exists (safe to call repeatedly)
-  await admin.graphql(
-    `#graphql
-    mutation {
-      metafieldDefinitionCreate(definition: {
-        name: "Volume Discount Rules"
-        namespace: "volume_discount_settings"
-        key: "product_volume_rules"
-        type: "json"
-        ownerType: SHOP
-      }) {
-        userErrors { field message }
-      }
-    }`
-  );
+  // try {
+  //   // Ensure definition exists (safe to call repeatedly)
+  //   await admin.graphql(
+  //     `#graphql
+  //     mutation {
+  //       metafieldDefinitionCreate(definition: {
+  //         name: "Volume Discount Rules"
+  //         namespace: "volume_discount_settings"
+  //         key: "product_volume_rules"
+  //         type: "json"
+  //         ownerType: SHOP
+  //       }) {
+  //         userErrors { field message }
+  //       }
+  //     }`
+  //   );
+  // } catch (error) {
+  //   console.log("[volumediscount/loader] metafieldDefinitionCreate error:", error);
+  //   if (error instanceof Response && cors) {
+  //     throw cors(error);
+  //   }
+  //   throw error;
+  // }
 
-  console.log("[volumediscount/loader] Fetching saved metafield...");
+  // console.log("[volumediscount/loader] Fetching saved metafield...");
 
-  const metafieldResponse = await admin.graphql(
-    `#graphql
-    query GetVolumeDiscountMetafield {
-      shop {
-        id
-        metafield(namespace: "volume_discount_settings", key: "product_volume_rules") {
+  let metafieldResponse;
+  try {
+    metafieldResponse = await admin.graphql(
+      `#graphql
+      query GetVolumeDiscountMetafield {
+        shop {
           id
-          value
-          jsonValue
+          metafield(namespace: "volume_discount_settings", key: "product_volume_rules") {
+            id
+            value
+            jsonValue
+          }
         }
-      }
-    }`
-  );
+      }`
+    );
+  } catch (error) {
+    if (error instanceof Response && cors) {
+      throw cors(error);
+    }
+    throw error;
+  }
 
   const metafieldJson = await metafieldResponse.json();
   console.log("[volumediscount/loader] Metafield raw response errors:", metafieldJson?.errors || "none");
@@ -135,12 +153,20 @@ export async function loader({ request }) {
         )
         .join("\n");
 
-      const productsResponse = await admin.graphql(
-        `#graphql
-        query GetSavedProducts {
-          ${aliases}
-        }`
-      );
+      let productsResponse;
+      try {
+        productsResponse = await admin.graphql(
+          `#graphql
+          query GetSavedProducts {
+            ${aliases}
+          }`
+        );
+      } catch (error) {
+        if (error instanceof Response && cors) {
+          throw cors(error);
+        }
+        throw error;
+      }
 
       const productsJson = await productsResponse.json();
       if (productsJson?.data) {
@@ -152,32 +178,40 @@ export async function loader({ request }) {
 
   console.log("[volumediscount/loader] Checking for existing app discount...");
 
-  const discountsResponse = await admin.graphql(`
-    #graphql
-    query {
-      discountNodes(first: 20) {
-        edges {
-          node {
-            id
-            __typename
-            discount {
+  let discountsResponse;
+  try {
+    discountsResponse = await admin.graphql(`
+      #graphql
+      query {
+        discountNodes(first: 20) {
+          edges {
+            node {
+              id
               __typename
-              ... on DiscountCodeBasic { title summary status }
-              ... on DiscountAutomaticBasic { title summary status }
-              ... on DiscountCodeBxgy { title summary status }
-              ... on DiscountAutomaticBxgy { title summary status }
-              ... on DiscountCodeFreeShipping { title summary status }
-              ... on DiscountAutomaticApp {
-                title
-                status
-                appDiscountType { functionId }
+              discount {
+                __typename
+                ... on DiscountCodeBasic { title summary status }
+                ... on DiscountAutomaticBasic { title summary status }
+                ... on DiscountCodeBxgy { title summary status }
+                ... on DiscountAutomaticBxgy { title summary status }
+                ... on DiscountCodeFreeShipping { title summary status }
+                ... on DiscountAutomaticApp {
+                  title
+                  status
+                  appDiscountType { functionId }
+                }
               }
             }
           }
         }
       }
+    `);
+  } catch (error) {
+    if (error instanceof Response && cors) {
+      throw cors(error);
     }
-  `);
+    throw error;
+  }
 
   const discountsJson = await discountsResponse.json();
   const discounts = discountsJson?.data?.discountNodes?.edges || [];
@@ -199,12 +233,26 @@ export async function loader({ request }) {
   console.log("[volumediscount/loader] ✅ Loader complete, returning data");
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-  return {
-    savedRules,
-    savedProducts,
-    isDiscountEnabled,
-    discountNodeId,
-  };
+  // return cors(
+  //   new Response(
+  //     JSON.stringify({
+  //       savedRules,
+  //       savedProducts,
+  //       isDiscountEnabled,
+  //       discountNodeId,
+  //     }),
+  //     {
+  //       headers: { "Content-Type": "application/json" },
+  //     }
+  //   )
+  // );
+  // WITH this:
+return {
+  savedRules,
+  savedProducts,
+  isDiscountEnabled,
+  discountNodeId,
+};
 }
 
 // ─── Server: Action ───────────────────────────────────────────────────────────
