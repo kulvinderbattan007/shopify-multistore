@@ -11,7 +11,7 @@ export const loader = async ({ request }) => {
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData(); 
+  const { apiKey } = useLoaderData();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -24,7 +24,7 @@ export default function App() {
         <s-link href="/app/faq">Faq</s-link>
 
         <s-link href="/app/plan">Plan</s-link>
-        <s-link href="/app/contact">Contact</s-link>
+        <s-link href="/app/contact">Support</s-link>
 
 
 
@@ -43,42 +43,3 @@ export function ErrorBoundary() {
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
 };
-
-// import { Outlet, useLoaderData, useRouteError } from "react-router";
-// import { AppProvider } from "@shopify/shopify-app-react-router/react";
-
-// export const loader = async ({ request }) => {
-//   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
-// };
-
-// export default function App() {
-//   const { apiKey } = useLoaderData();
-
-//   return (
-//     <AppProvider embedded apiKey={apiKey}>
-//       <s-app-nav>
-//         <s-link href="/app">About</s-link>
-//         <s-link href="/app/volumediscount">Discount Rules</s-link>
-//         <s-link href="/app/faq">Faq</s-link>
-//         <s-link href="/app/plan">Plan</s-link>
-//         <s-link href="/app/contact">Contact</s-link>
-//       </s-app-nav>
-//       <Outlet />
-//     </AppProvider>
-//   );
-// }
-
-// export function ErrorBoundary() {
-//   const error = useRouteError();
-//   console.error("App boundary error:", error);
-//   return (
-//     <div style={{ padding: "20px", color: "red" }}>
-//       Something went wrong. Please refresh the page.
-//     </div>
-//   );
-// }
-
-// export const headers = (headersArgs) => {
-//   return headersArgs.loaderHeaders;
-// };
-

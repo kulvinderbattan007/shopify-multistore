@@ -13,119 +13,56 @@ const METAFIELD_TYPE = "json";
 
 // ─── Server: Loader ───────────────────────────────────────────────────────────
 
-
-
-// ─── Server: Action ───────────────────────────────────────────────────────────
-
-// ─── REPLACE ONLY THE loader() AND action() FUNCTIONS in app.volumediscount.jsx ───
-// Keep everything else (imports, helpers, components, default export) exactly as-is.
-
-// ─── Server: Loader ───────────────────────────────────────────────────────────
-
 export async function loader({ request }) {
-   console.log("Loader ran volume discount", request);
-  const url = new URL(request.url);
+  const { admin } = await authenticate.admin(request);
 
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("[volumediscount/loader] LOADER HIT");
-  console.log("[volumediscount/loader] Full URL:", request.url);
-  console.log("[volumediscount/loader] Is .data request:", request.url.includes(".data"));
-  console.log("[volumediscount/loader] shop param:", url.searchParams.get("shop"));
-  console.log("[volumediscount/loader] id_token present:", !!url.searchParams.get("id_token"));
-  console.log("[volumediscount/loader] Authorization header:", request.headers.get("Authorization") ? "PRESENT" : "MISSING");
-  console.log("[volumediscount/loader] Cookie:", request.headers.get("cookie") ? "PRESENT" : "MISSING");
 
-  let admin, cors;
-  try {
-    console.log("[volumediscount/loader] Calling authenticate.admin()...");
-    const result = await authenticate.admin(request);
-    admin = result.admin;
-    cors = result.cors;
-    console.log("[volumediscount/loader] ✅ authenticate.admin() succeeded");
-    console.log("[volumediscount/loader] admin object keys:", Object.keys(result));
-  } catch (error) {
-    console.log("[volumediscount/loader] ❌ authenticate.admin() FAILED");
-    console.log("[volumediscount/loader] Error type:", error?.constructor?.name);
-    console.log("[volumediscount/loader] Error message:", error?.message);
-    console.log("[volumediscount/loader] Error status:", error?.status);
-    console.log("[volumediscount/loader] This is why you get 401 ↑");
-    throw error;
-  }
+  // Ensure definition exists (safe to call repeatedly)
+  await admin.graphql(
+    `#graphql
+    mutation {
+      metafieldDefinitionCreate(definition: {
+        name: "Volume Discount Rules"
+        namespace: "volume_discount_settings"
+        key: "product_volume_rules"
+        type: "json"
+        ownerType: SHOP
+      }) {
+        userErrors { field message }
+      }
+    }`
+  );
 
-  // console.log("[volumediscount/loader] Ensuring metafield definition exists...");
-
-  // try {
-  //   // Ensure definition exists (safe to call repeatedly)
-  //   await admin.graphql(
-  //     `#graphql
-  //     mutation {
-  //       metafieldDefinitionCreate(definition: {
-  //         name: "Volume Discount Rules"
-  //         namespace: "volume_discount_settings"
-  //         key: "product_volume_rules"
-  //         type: "json"
-  //         ownerType: SHOP
-  //       }) {
-  //         userErrors { field message }
-  //       }
-  //     }`
-  //   );
-  // } catch (error) {
-  //   console.log("[volumediscount/loader] metafieldDefinitionCreate error:", error);
-  //   if (error instanceof Response && cors) {
-  //     throw cors(error);
-  //   }
-  //   throw error;
-  // }
-
-  // console.log("[volumediscount/loader] Fetching saved metafield...");
-
-  let metafieldResponse;
-  try {
-    metafieldResponse = await admin.graphql(
-      `#graphql
-      query GetVolumeDiscountMetafield {
-        shop {
+  const metafieldResponse = await admin.graphql(
+    `#graphql
+    query GetVolumeDiscountMetafield {
+      shop {
+        id
+        metafield(namespace: "volume_discount_settings", key: "product_volume_rules") {
           id
-          metafield(namespace: "volume_discount_settings", key: "product_volume_rules") {
-            id
-            value
-            jsonValue
-          }
+          value
+          jsonValue
         }
-      }`
-    );
-  } catch (error) {
-    if (error instanceof Response && cors) {
-      throw cors(error);
-    }
-    throw error;
-  }
+      }
+    }`
+  );
 
   const metafieldJson = await metafieldResponse.json();
-  console.log("[volumediscount/loader] Metafield raw response errors:", metafieldJson?.errors || "none");
-
   const metafield = metafieldJson?.data?.shop?.metafield;
   let savedRules = [];
 
   if (metafield) {
     try {
       savedRules = metafield.jsonValue ?? JSON.parse(metafield.value) ?? [];
-      console.log("[volumediscount/loader] ✅ Loaded", savedRules.length, "saved rule(s)");
     } catch {
-      console.log("[volumediscount/loader] ⚠️  Could not parse metafield value");
       savedRules = [];
     }
-  } else {
-    console.log("[volumediscount/loader] ℹ️  No metafield found yet (first run)");
   }
 
   // Fetch full product + variant details for saved rules
   let savedProducts = [];
   if (Array.isArray(savedRules) && savedRules.length > 0) {
     const productIds = savedRules.map((r) => r.productId).filter(Boolean);
-    console.log("[volumediscount/loader] Fetching product details for", productIds.length, "product(s)...");
-
     if (productIds.length > 0) {
       const aliases = productIds
         .map(
@@ -153,101 +90,114 @@ export async function loader({ request }) {
         )
         .join("\n");
 
-      let productsResponse;
-      try {
-        productsResponse = await admin.graphql(
-          `#graphql
-          query GetSavedProducts {
-            ${aliases}
-          }`
-        );
-      } catch (error) {
-        if (error instanceof Response && cors) {
-          throw cors(error);
-        }
-        throw error;
-      }
+      const productsResponse = await admin.graphql(
+        `#graphql
+        query GetSavedProducts {
+          ${aliases}
+        }`
+      );
 
       const productsJson = await productsResponse.json();
       if (productsJson?.data) {
         savedProducts = Object.values(productsJson.data).filter(Boolean);
-        console.log("[volumediscount/loader] ✅ Fetched", savedProducts.length, "product(s)");
       }
     }
   }
 
-  console.log("[volumediscount/loader] Checking for existing app discount...");
 
-  let discountsResponse;
-  try {
-    discountsResponse = await admin.graphql(`
-      #graphql
-      query {
-        discountNodes(first: 20) {
-          edges {
-            node {
-              id
-              __typename
-              discount {
-                __typename
-                ... on DiscountCodeBasic { title summary status }
-                ... on DiscountAutomaticBasic { title summary status }
-                ... on DiscountCodeBxgy { title summary status }
-                ... on DiscountAutomaticBxgy { title summary status }
-                ... on DiscountCodeFreeShipping { title summary status }
-                ... on DiscountAutomaticApp {
-                  title
-                  status
-                  appDiscountType { functionId }
-                }
+
+  // 🔹 Check if automatic app discount already exists
+const discountsResponse = await admin.graphql(`
+  #graphql
+  query {
+    discountNodes(first: 20) {
+      edges {
+        node {
+          id
+          __typename
+
+          discount {
+            __typename
+
+            ... on DiscountCodeBasic {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountAutomaticBasic {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountCodeBxgy {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountAutomaticBxgy {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountCodeFreeShipping {
+              title
+              summary
+              status
+            }
+
+            ... on DiscountAutomaticApp {
+              title
+              status
+
+              appDiscountType {
+                functionId
               }
             }
           }
         }
       }
-    `);
-  } catch (error) {
-    if (error instanceof Response && cors) {
-      throw cors(error);
     }
-    throw error;
   }
+`);
 
-  const discountsJson = await discountsResponse.json();
-  const discounts = discountsJson?.data?.discountNodes?.edges || [];
-  console.log("[volumediscount/loader] Total discount nodes found:", discounts.length);
+const discountsJson = await discountsResponse.json();
 
-  const existingAppDiscount = discounts.find((d) => {
-    const discount = d?.node?.discount;
-    return (
-      discount?.__typename === "DiscountAutomaticApp" &&
-      discount?.title === "Volume discount (Prime App)"
-    );
-  });
+console.log("======== FULL DISCOUNTS ========");
+console.dir(discountsJson, { depth: null });
 
-  const isDiscountEnabled = !!existingAppDiscount;
-  const discountNodeId = existingAppDiscount?.node?.id || null;
+const discounts =
+  discountsJson?.data?.discountNodes?.edges || [];
 
-  console.log("[volumediscount/loader] isDiscountEnabled:", isDiscountEnabled);
-  console.log("[volumediscount/loader] discountNodeId:", discountNodeId);
-  console.log("[volumediscount/loader] ✅ Loader complete, returning data");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+const existingAppDiscount = discounts.find((d) => {
 
-  // return cors(
-  //   new Response(
-  //     JSON.stringify({
-  //       savedRules,
-  //       savedProducts,
-  //       isDiscountEnabled,
-  //       discountNodeId,
-  //     }),
-  //     {
-  //       headers: { "Content-Type": "application/json" },
-  //     }
-  //   )
-  // );
-  // WITH this:
-return {
+  const discount = d?.node?.discount;
+
+  console.log("CHECKING:", discount);
+
+  return (
+    discount?.__typename === "DiscountAutomaticApp" &&
+    discount?.title === "Volume discount (Prime App)"
+  );
+});
+
+console.log("======== FOUND APP DISCOUNT ========");
+console.dir(existingAppDiscount, { depth: null });
+
+const isDiscountEnabled = !!existingAppDiscount;
+
+const discountNodeId = existingAppDiscount?.node?.id || null;
+
+console.log("======== FINAL STATE ========");
+console.log({
+  isDiscountEnabled,
+  discountNodeId,
+});
+
+ return {
   savedRules,
   savedProducts,
   isDiscountEnabled,
@@ -258,35 +208,15 @@ return {
 // ─── Server: Action ───────────────────────────────────────────────────────────
 
 export async function action({ request }) {
-  const url = new URL(request.url);
-
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log("[volumediscount/action] ACTION HIT");
-  console.log("[volumediscount/action] Full URL:", request.url);
-  console.log("[volumediscount/action] shop param:", url.searchParams.get("shop"));
-  console.log("[volumediscount/action] Authorization header:", request.headers.get("Authorization") ? "PRESENT" : "MISSING");
-
-  let admin;
-  try {
-    console.log("[volumediscount/action] Calling authenticate.admin()...");
-    const result = await authenticate.admin(request);
-    admin = result.admin;
-    console.log("[volumediscount/action] ✅ authenticate.admin() succeeded");
-  } catch (error) {
-    console.log("[volumediscount/action] ❌ authenticate.admin() FAILED:", error?.message);
-    throw error;
-  }
-
+  const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const actionType = formData.get("actionType");
-  console.log("[volumediscount/action] actionType:", actionType);
 
   // ── Search / Browse products ──
   if (actionType === "SEARCH_PRODUCTS") {
+    console.log("ffff");
     const raw = formData.get("query");
     const searchTerm = typeof raw === "string" ? raw.trim() : "";
-    console.log("[volumediscount/action] SEARCH_PRODUCTS searchTerm:", searchTerm || "(browse all)");
-
     const variables = searchTerm.length > 0 ? { query: `title:${searchTerm}` } : {};
 
     const response = await admin.graphql(
@@ -321,10 +251,8 @@ export async function action({ request }) {
     );
 
     const json = await response.json();
-    if (json.errors) console.error("[volumediscount/action] GraphQL errors:", JSON.stringify(json.errors));
+    if (json.errors) console.error("Shopify GraphQL errors:", JSON.stringify(json.errors));
     const products = json?.data?.products?.edges?.map((e) => e.node) || [];
-    console.log("[volumediscount/action] ✅ SEARCH_PRODUCTS found", products.length, "product(s)");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     return { actionType: "SEARCH_PRODUCTS", products };
   }
 
@@ -334,18 +262,23 @@ export async function action({ request }) {
     let rules;
     try {
       rules = JSON.parse(rulesRaw);
-      console.log("[volumediscount/action] SAVE_VOLUME_RULES parsed", rules.length, "rule(s)");
     } catch {
-      console.log("[volumediscount/action] ❌ SAVE_VOLUME_RULES invalid JSON");
       return { actionType: "SAVE_VOLUME_RULES", errors: ["Invalid rules data."] };
     }
 
-    const shopResponse = await admin.graphql(`#graphql query GetShopId { shop { id } }`);
+    const shopResponse = await admin.graphql(
+  `#graphql
+  query GetShopId {
+    shop {
+      id
+    }
+  }`
+);
     const shopJson = await shopResponse.json();
     const shopId = shopJson?.data?.shop?.id;
-    console.log("[volumediscount/action] shopId:", shopId);
 
-    if (!shopId) return { actionType: "SAVE_VOLUME_RULES", errors: ["Unable to resolve shop ID."] };
+    if (!shopId)
+      return { actionType: "SAVE_VOLUME_RULES", errors: ["Unable to resolve shop ID."] };
 
     const mutation = await admin.graphql(
       `#graphql
@@ -360,9 +293,9 @@ export async function action({ request }) {
           metafields: [
             {
               ownerId: shopId,
-              namespace: "volume_discount_settings",
-              key: "product_volume_rules",
-              type: "json",
+              namespace: METAFIELD_NAMESPACE,
+              key: METAFIELD_KEY,
+              type: METAFIELD_TYPE,
               value: JSON.stringify(rules),
             },
           ],
@@ -373,13 +306,10 @@ export async function action({ request }) {
     const mutationJson = await mutation.json();
     const userErrors = mutationJson?.data?.metafieldsSet?.userErrors || [];
     if (userErrors.length) {
-      console.log("[volumediscount/action] ❌ SAVE_VOLUME_RULES userErrors:", userErrors);
       return { actionType: "SAVE_VOLUME_RULES", errors: userErrors.map((e) => e.message) };
     }
 
     const saved = mutationJson?.data?.metafieldsSet?.metafields?.[0];
-    console.log("[volumediscount/action] ✅ SAVE_VOLUME_RULES saved successfully");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     try {
       return { actionType: "SAVE_VOLUME_RULES", success: true, savedRules: JSON.parse(saved.value) };
     } catch {
@@ -387,124 +317,133 @@ export async function action({ request }) {
     }
   }
 
+
   // ── Enable custom discount ──
-  if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
-    console.log("[volumediscount/action] ENABLE_CUSTOM_DISCOUNT called");
+if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
+  const { admin } = await authenticate.admin(request);
 
-    const response = await admin.graphql(
-      `#graphql
-      mutation CreateAutomaticDiscount {
-        discountAutomaticAppCreate(
-          automaticAppDiscount: {
-            title: "Volume discount (Prime App)"
-            functionHandle: "discount-function-js"
-            discountClasses: [PRODUCT, ORDER, SHIPPING]
-            startsAt: "2025-01-01T00:00:00"
-          }
-        ) {
-          automaticAppDiscount { discountId }
-          userErrors { field message }
+  const response = await admin.graphql(
+    `#graphql
+    mutation CreateAutomaticDiscount {
+      discountAutomaticAppCreate(
+        automaticAppDiscount: {
+          title: "Volume discount (Prime App)"
+          functionHandle: "discount-function-js"
+          discountClasses: [PRODUCT, ORDER, SHIPPING]
+          startsAt: "2025-01-01T00:00:00"
         }
-      }`
-    );
+      ) {
+        automaticAppDiscount {
+          discountId
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }`
+  );
 
-    const json = await response.json();
-    const errors = json?.data?.discountAutomaticAppCreate?.userErrors || [];
+  const json = await response.json();
 
-    if (errors.length) {
-      console.log("[volumediscount/action] ❌ ENABLE_CUSTOM_DISCOUNT errors:", errors);
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      return { actionType: "ENABLE_CUSTOM_DISCOUNT", errors: errors.map((e) => e.message) };
-    }
+  const errors = json?.data?.discountAutomaticAppCreate?.userErrors || [];
 
-    console.log("[volumediscount/action] ✅ ENABLE_CUSTOM_DISCOUNT success");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  if (errors.length) {
     return {
       actionType: "ENABLE_CUSTOM_DISCOUNT",
-      success: true,
-      discountId: json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
+      errors: errors.map((e) => e.message),
     };
   }
 
-  // ── Disable custom discount ──
-  if (actionType === "DISABLE_CUSTOM_DISCOUNT") {
-    const discountNodeId = formData.get("discountNodeId");
-    console.log("[volumediscount/action] DISABLE_CUSTOM_DISCOUNT discountNodeId:", discountNodeId);
+ return {
+  actionType: "ENABLE_CUSTOM_DISCOUNT",
+  success: true,
+  discountId:
+    json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
+};
+}
 
-    if (!discountNodeId) {
-      console.log("[volumediscount/action] ❌ DISABLE_CUSTOM_DISCOUNT missing discountNodeId");
-      return { actionType: "DISABLE_CUSTOM_DISCOUNT", errors: ["Discount node ID missing."] };
-    }
+// ── Disable custom discount ──
+if (actionType === "DISABLE_CUSTOM_DISCOUNT") {
 
-    const response = await admin.graphql(
-      `#graphql
-      mutation discountAutomaticDelete($id: ID!) {
-        discountAutomaticDelete(id: $id) {
-          deletedAutomaticDiscountId
-          userErrors { field message }
-        }
-      }`,
-      { variables: { id: discountNodeId } }
-    );
+  const discountNodeId = formData.get("discountNodeId");
 
-    const json = await response.json();
-    const errors = json?.data?.discountAutomaticDelete?.userErrors || [];
-
-    if (errors.length) {
-      console.log("[volumediscount/action] ❌ DISABLE_CUSTOM_DISCOUNT errors:", errors);
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      return { actionType: "DISABLE_CUSTOM_DISCOUNT", errors: errors.map((e) => e.message) };
-    }
-
-    console.log("[volumediscount/action] ✅ DISABLE_CUSTOM_DISCOUNT success");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    return { actionType: "DISABLE_CUSTOM_DISCOUNT", success: true };
+  if (!discountNodeId) {
+    return {
+      actionType: "DISABLE_CUSTOM_DISCOUNT",
+      errors: ["Discount node ID missing."],
+    };
   }
 
-  // ── Remove product ──
-  if (actionType === "REMOVE_PRODUCT") {
-    const productId = formData.get("productId");
-    console.log("[volumediscount/action] REMOVE_PRODUCT productId:", productId);
+  const response = await admin.graphql(
+    `#graphql
+    mutation discountAutomaticDelete($id: ID!) {
+      discountAutomaticDelete(id: $id) {
+        deletedAutomaticDiscountId
 
-    let rules = [];
-    try { rules = JSON.parse(formData.get("rules")); } catch {}
-
-    const updatedRules = rules.filter((r) => r.productId !== productId);
-    console.log("[volumediscount/action] Rules after removal:", updatedRules.length);
-
-    const shopResponse = await admin.graphql(`#graphql query GetShopId { shop { id } }`);
-    const shopJson = await shopResponse.json();
-    const shopId = shopJson?.data?.shop?.id;
-
-    await admin.graphql(
-      `#graphql
-      mutation($metafields: [MetafieldsSetInput!]!) {
-        metafieldsSet(metafields: $metafields) {
-          userErrors { field message }
+        userErrors {
+          field
+          message
         }
-      }`,
-      {
-        variables: {
-          metafields: [
-            {
-              ownerId: shopId,
-              namespace: "volume_discount_settings",
-              key: "product_volume_rules",
-              type: "json",
-              value: JSON.stringify(updatedRules),
-            },
-          ],
-        },
       }
-    );
+    }`,
+    {
+      variables: {
+        id: discountNodeId,
+      },
+    }
+  );
 
-    console.log("[volumediscount/action] ✅ REMOVE_PRODUCT success");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    return { actionType: "REMOVE_PRODUCT", success: true, updatedRules };
+  const json = await response.json();
+
+  const errors =
+    json?.data?.discountAutomaticDelete?.userErrors || [];
+
+  if (errors.length) {
+    return {
+      actionType: "DISABLE_CUSTOM_DISCOUNT",
+      errors: errors.map((e) => e.message),
+    };
   }
 
-  console.log("[volumediscount/action] ❌ Unknown actionType:", actionType);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  return {
+    actionType: "DISABLE_CUSTOM_DISCOUNT",
+    success: true,
+  };
+}
+
+if (actionType === "REMOVE_PRODUCT") {
+  const productId = formData.get("productId");
+  let rules = [];
+  try { rules = JSON.parse(formData.get("rules")); } catch {}
+
+  const updatedRules = rules.filter(r => r.productId !== productId);
+
+  const shopResponse = await admin.graphql(
+  `#graphql
+  query GetShopId {
+    shop {
+      id
+    }
+  }`
+);
+const shopJson = await shopResponse.json();
+const shopId = shopJson?.data?.shop?.id;
+  // const shopId = shopJson?.data?.shop?.id;
+
+  await admin.graphql(
+    `#graphql
+    mutation($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        userErrors { field message }
+      }
+    }`,
+    { variables: { metafields: [{ ownerId: shopId, namespace: METAFIELD_NAMESPACE, key: METAFIELD_KEY, type: METAFIELD_TYPE, value: JSON.stringify(updatedRules) }] } }
+  );
+
+  return { actionType: "REMOVE_PRODUCT", success: true, updatedRules };
+}
+
   return { errors: ["Unknown action."] };
 }
 
@@ -741,9 +680,7 @@ function TierModal({ product, existingTiers, onClose, onSave, isSaving }) {
           {/* Info banner */}
           <div style={{ background: "#f0f4ff", border: "1px solid #c4cff5", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", fontSize: "12px", color: "#3c4fe0", display: "flex", gap: "8px", alignItems: "flex-start" }}>
             <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" style={{ flexShrink: 0, marginTop: "1px" }}><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-            {/* <span>Tiers are configured per variant. The Variant ID is saved to the metafield for use in your discount function.</span> */}
-            <span>Tiers are configured per variant.</span>
-
+            <span>Tiers are configured per variant. The Variant ID is saved to the metafield for use in your discount function.</span>
           </div>
 
           {/* Variant sections */}
@@ -1099,9 +1036,7 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
   }
 
   return (
-    // <s-page heading="Volume Discounts">
-    <s-page heading="Rulex Discounts">
-
+    <s-page heading="Volume Discounts">
 
     <s-section heading="Discount status">
   <div
@@ -1415,561 +1350,3 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//     import { useEffect, useState } from "react";
-// import { useFetcher, useLoaderData } from "react-router";
-// import { useAppBridge } from "@shopify/app-bridge-react";
-// import { boundary } from "@shopify/shopify-app-react-router/server";
-// import { authenticate } from "../shopify.server";
-
-// const METAFIELD_NAMESPACE = "volume_discount_settings";
-// const METAFIELD_KEY = "product_volume_rules";
-// const METAFIELD_TYPE = "json";
-
-// // ─── Server: Load products + existing metafield ───────────────────────────────
-
-// export async function loader({ request }) {
-//   const { admin } = await authenticate.admin(request);
-//   const url = new URL(request.url);
-//   const searchQuery = url.searchParams.get("q") || "";
-
-//   // Fetch products (search or first 10)
-//   const productsResponse = await admin.graphql(
-//     `#graphql
-//     query GetProducts($query: String!) {
-//       products(first: 10, query: $query) {
-//         edges {
-//           node {
-//             id
-//             title
-//             images(first: 1) {
-//               edges {
-//                 node {
-//                   url
-//                 }
-//               }
-//             }
-//           }
-//         }
-//       }
-//     }`,
-//     { variables: { query: searchQuery } }
-//   );
-
-//   const productsJson = await productsResponse.json();
-//   const products = productsJson?.data?.products?.edges?.map((e) => e.node) || [];
-
-//   // Fetch existing volume discount metafield
-//   const metafieldResponse = await admin.graphql(
-//     `#graphql
-//     query GetVolumeDiscountMetafield {
-//       shop {
-//         id
-//         metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${METAFIELD_KEY}") {
-//           id
-//           value
-//           jsonValue
-//         }
-//       }
-//     }`
-//   );
-
-//   const metafieldJson = await metafieldResponse.json();
-//   const metafield = metafieldJson?.data?.shop?.metafield;
-//   let savedRules = null;
-
-//   if (metafield) {
-//     try {
-//       savedRules = metafield.jsonValue ?? JSON.parse(metafield.value);
-//     } catch {
-//       savedRules = null;
-//     }
-//   }
-
-//   return { products, savedRules, searchQuery };
-// }
-
-// // ─── Server: Save metafield ───────────────────────────────────────────────────
-
-// export async function action({ request }) {
-//   const { admin } = await authenticate.admin(request);
-//   const formData = await request.formData();
-//   const actionType = formData.get("actionType");
-
-//   // ── Search products ──
-//   if (actionType === "SEARCH_PRODUCTS") {
-//     const query = formData.get("query") || "";
-//     const response = await admin.graphql(
-//       `#graphql
-//       query SearchProducts($query: String!) {
-//         products(first: 10, query: $query) {
-//           edges {
-//             node {
-//               id
-//               title
-//               images(first: 1) {
-//                 edges {
-//                   node {
-//                     url
-//                   }
-//                 }
-//               }
-//             }
-//           }
-//         }
-//       }`,
-//       { variables: { query } }
-//     );
-//     const json = await response.json();
-//     const products = json?.data?.products?.edges?.map((e) => e.node) || [];
-//     return { products };
-//   }
-
-//   // ── Save volume discount rules to shop metafield ──
-//   if (actionType === "SAVE_VOLUME_RULES") {
-//     const rulesRaw = formData.get("rules");
-//     let rules;
-//     try {
-//       rules = JSON.parse(rulesRaw);
-//     } catch {
-//       return { errors: ["Invalid rules data."] };
-//     }
-
-//     // Get shop ID
-//     const shopResponse = await admin.graphql(
-//       `#graphql
-//       query GetShopId {
-//         shop { id }
-//       }`
-//     );
-//     const shopJson = await shopResponse.json();
-//     const shopId = shopJson?.data?.shop?.id;
-
-//     if (!shopId) return { errors: ["Unable to resolve shop ID."] };
-
-//     // Upsert metafield
-//     const mutation = await admin.graphql(
-//       `#graphql
-//       mutation SaveVolumeDiscountRules($metafields: [MetafieldsSetInput!]!) {
-//         metafieldsSet(metafields: $metafields) {
-//           metafields {
-//             id
-//             namespace
-//             key
-//             value
-//           }
-//           userErrors {
-//             field
-//             message
-//             code
-//           }
-//         }
-//       }`,
-//       {
-//         variables: {
-//           metafields: [
-//             {
-//               ownerId: shopId,
-//               namespace: METAFIELD_NAMESPACE,
-//               key: METAFIELD_KEY,
-//               type: METAFIELD_TYPE,
-//               value: JSON.stringify(rules),
-//             },
-//           ],
-//         },
-//       }
-//     );
-
-//     const mutationJson = await mutation.json();
-//     const userErrors = mutationJson?.data?.metafieldsSet?.userErrors || [];
-
-//     if (userErrors.length) {
-//       return { errors: userErrors.map((e) => e.message) };
-//     }
-
-//     const saved = mutationJson?.data?.metafieldsSet?.metafields?.[0];
-//     try {
-//       return { success: true, savedRules: JSON.parse(saved.value) };
-//     } catch {
-//       return { success: true, savedRules: rules };
-//     }
-//   }
-
-//   return { errors: ["Unknown action."] };
-// }
-
-// // ─── Client: Volume Discount UI ───────────────────────────────────────────────
-
-// export default function VolumeDiscount() {
-//   const loaderData = useLoaderData();
-//   const fetcher = useFetcher();
-//   const shopify = useAppBridge();
-
-//   const [products, setProducts] = useState(loaderData?.products || []);
-//   const [searchQuery, setSearchQuery] = useState("");
-//   const [selectedProduct, setSelectedProduct] = useState(null);
-
-//   // tiers: [{ id, minQty, discount, label }]
-//   const [tiers, setTiers] = useState([]);
-//   const [tierCounter, setTierCounter] = useState(0);
-
-//   // Saved rules from metafield (all products combined)
-//   const [allRules, setAllRules] = useState(loaderData?.savedRules || []);
-
-//   const isSearching =
-//     fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SEARCH_PRODUCTS";
-//   const isSaving =
-//     fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SAVE_VOLUME_RULES";
-
-//   // ── Handle fetcher responses ──
-//   useEffect(() => {
-//     if (!fetcher.data) return;
-
-//     if (fetcher.data.products) {
-//       setProducts(fetcher.data.products);
-//     }
-
-//     if (fetcher.data.success) {
-//       shopify.toast.show("Volume discount rules saved successfully!");
-//       setAllRules(fetcher.data.savedRules || allRules);
-//     }
-
-//     if (fetcher.data.errors?.length) {
-//       shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
-//     }
-//   }, [fetcher.data]);
-
-//   // ── When a product is selected, load its existing tiers if any ──
-//   function handleSelectProduct(product) {
-//     setSelectedProduct(product);
-//     const existing = Array.isArray(allRules)
-//       ? allRules.find((r) => r.productId === product.id)
-//       : null;
-
-//     if (existing?.tiers?.length) {
-//       const loaded = existing.tiers.map((t, i) => ({
-//         id: i + 1,
-//         minQty: t.minQty,
-//         discount: t.discount,
-//         label: t.label || "",
-//       }));
-//       setTiers(loaded);
-//       setTierCounter(loaded.length);
-//     } else {
-//       setTiers([]);
-//       setTierCounter(0);
-//     }
-//   }
-
-//   // ── Tier helpers ──
-//   function addTier() {
-//     const newId = tierCounter + 1;
-//     setTierCounter(newId);
-//     setTiers((prev) => [...prev, { id: newId, minQty: "", discount: "", label: "" }]);
-//   }
-
-//   function removeTier(id) {
-//     setTiers((prev) => prev.filter((t) => t.id !== id));
-//   }
-
-//   function updateTier(id, field, value) {
-//     setTiers((prev) => prev.map((t) => (t.id === id ? { ...t, [field]: value } : t)));
-//   }
-
-//   // ── Search ──
-//   function handleSearch() {
-//     fetcher.submit(
-//       { actionType: "SEARCH_PRODUCTS", query: searchQuery },
-//       { method: "post" }
-//     );
-//   }
-
-//   // ── Save ──
-//   function handleSave() {
-//     if (!selectedProduct) return;
-
-//     const validTiers = tiers
-//       .filter((t) => t.minQty !== "" && t.discount !== "")
-//       .map((t) => ({
-//         minQty: Number(t.minQty),
-//         discount: Number(t.discount),
-//         label: t.label,
-//       }))
-//       .sort((a, b) => a.minQty - b.minQty);
-
-//     if (!validTiers.length) {
-//       shopify.toast.show("Please add at least one valid tier.", { isError: true });
-//       return;
-//     }
-
-//     // Merge with existing rules (replace if product already exists)
-//     const updatedRules = Array.isArray(allRules)
-//       ? allRules.filter((r) => r.productId !== selectedProduct.id)
-//       : [];
-
-//     updatedRules.push({
-//       productId: selectedProduct.id,
-//       productTitle: selectedProduct.title,
-//       tiers: validTiers,
-//       updatedAt: new Date().toISOString().slice(0, 10),
-//     });
-
-//     fetcher.submit(
-//       { actionType: "SAVE_VOLUME_RULES", rules: JSON.stringify(updatedRules) },
-//       { method: "post" }
-//     );
-//   }
-
-//   const canSave =
-//     selectedProduct &&
-//     tiers.length > 0 &&
-//     tiers.every((t) => t.minQty !== "" && t.discount !== "");
-
-//   const productImage = (product) =>
-//     product?.images?.edges?.[0]?.node?.url || null;
-
-//   return (
-//     <s-page heading="Volume Discounts">
-//       {/* ── Product Search ── */}
-//       <s-section heading="Search & Select Product">
-//         <s-stack direction="inline" gap="base" align="end">
-//           <s-text-field
-//             label="Search products"
-//             placeholder="e.g. T-shirt, Shoes..."
-//             value={searchQuery}
-//             onInput={(e) => setSearchQuery(e.target.value)}
-//             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-//           />
-//           <s-button
-//             onClick={handleSearch}
-//             {...(isSearching ? { loading: true } : {})}
-//           >
-//             Search
-//           </s-button>
-//         </s-stack>
-
-//         {/* Product list */}
-//         {products.length > 0 && (
-//           <s-stack direction="block" gap="tight" style={{ marginTop: "12px" }}>
-//             {products.map((product) => {
-//               const isSelected = selectedProduct?.id === product.id;
-//               return (
-//                 <s-box
-//                   key={product.id}
-//                   padding="base"
-//                   borderWidth="base"
-//                   borderRadius="base"
-//                   background={isSelected ? "highlight" : "default"}
-//                   onClick={() => handleSelectProduct(product)}
-//                   style={{ cursor: "pointer" }}
-//                 >
-//                   <s-stack direction="inline" gap="base" align="center">
-//                     {productImage(product) && (
-//                       <img
-//                         src={productImage(product)}
-//                         alt={product.title}
-//                         style={{
-//                           width: "40px",
-//                           height: "40px",
-//                           objectFit: "cover",
-//                           borderRadius: "6px",
-//                         }}
-//                       />
-//                     )}
-//                     <s-stack direction="block" gap="none">
-//                       <s-text fontWeight="semibold">{product.title}</s-text>
-//                       <s-text tone="subdued" size="small">
-//                         {product.id.replace("gid://shopify/Product/", "ID: ")}
-//                       </s-text>
-//                     </s-stack>
-//                     {isSelected && (
-//                       <s-badge tone="success" style={{ marginLeft: "auto" }}>
-//                         Selected
-//                       </s-badge>
-//                     )}
-//                   </s-stack>
-//                 </s-box>
-//               );
-//             })}
-//           </s-stack>
-//         )}
-
-//         {products.length === 0 && (
-//           <s-box padding="base" style={{ marginTop: "12px" }}>
-//             <s-text tone="subdued">
-//               Search for products above to get started.
-//             </s-text>
-//           </s-box>
-//         )}
-//       </s-section>
-
-//       {/* ── Discount Tiers ── */}
-//       <s-section
-//         heading={
-//           selectedProduct
-//             ? `Discount Tiers — ${selectedProduct.title}`
-//             : "Discount Tiers"
-//         }
-//       >
-//         {!selectedProduct && (
-//           <s-banner tone="info">
-//             Select a product above to configure its volume discount tiers.
-//           </s-banner>
-//         )}
-
-//         {selectedProduct && (
-//           <s-stack direction="block" gap="base">
-//             {tiers.length === 0 && (
-//               <s-text tone="subdued">
-//                 No tiers yet. Click "Add Tier" to create your first discount rule.
-//               </s-text>
-//             )}
-
-//             {/* Tier rows */}
-//             {tiers.map((tier, index) => (
-//               <s-box
-//                 key={tier.id}
-//                 padding="base"
-//                 borderWidth="base"
-//                 borderRadius="base"
-//                 background="subdued"
-//               >
-//                 <s-stack direction="inline" gap="base" align="end">
-//                   {/* Tier number */}
-//                   <s-stack direction="block" gap="none">
-//                     <s-text size="small" tone="subdued">Tier</s-text>
-//                     <s-text fontWeight="bold">#{index + 1}</s-text>
-//                   </s-stack>
-
-//                   {/* Min Quantity */}
-//                   <s-text-field
-//                     label="Min quantity"
-//                     type="number"
-//                     min="1"
-//                     placeholder="e.g. 10"
-//                     value={tier.minQty}
-//                     onInput={(e) => updateTier(tier.id, "minQty", e.target.value)}
-//                     style={{ width: "120px" }}
-//                   />
-
-//                   {/* Discount % */}
-//                   <s-text-field
-//                     label="Discount %"
-//                     type="number"
-//                     min="0"
-//                     max="100"
-//                     step="0.5"
-//                     placeholder="e.g. 15"
-//                     value={tier.discount}
-//                     onInput={(e) => updateTier(tier.id, "discount", e.target.value)}
-//                     style={{ width: "120px" }}
-//                   />
-
-//                   {/* Label */}
-//                   <s-text-field
-//                     label="Label (optional)"
-//                     placeholder="e.g. Bulk deal"
-//                     value={tier.label}
-//                     onInput={(e) => updateTier(tier.id, "label", e.target.value)}
-//                     style={{ width: "160px" }}
-//                   />
-
-//                   {/* Remove */}
-//                   <s-button
-//                     tone="critical"
-//                     variant="plain"
-//                     onClick={() => removeTier(tier.id)}
-//                     style={{ marginBottom: "2px" }}
-//                   >
-//                     Remove
-//                   </s-button>
-//                 </s-stack>
-
-//                 {/* Helper text */}
-//                 {tier.minQty && tier.discount && (
-//                   <s-text tone="subdued" size="small" style={{ marginTop: "6px" }}>
-//                     → Buy {tier.minQty}+ units and get {tier.discount}% off
-//                     {tier.label ? ` (${tier.label})` : ""}
-//                   </s-text>
-//                 )}
-//               </s-box>
-//             ))}
-
-//             {/* Add tier button */}
-//             <s-button variant="secondary" onClick={addTier}>
-//               + Add Tier
-//             </s-button>
-//           </s-stack>
-//         )}
-//       </s-section>
-
-//       {/* ── Save Button ── */}
-//       {selectedProduct && (
-//         <s-section>
-//           <s-stack direction="inline" gap="base">
-//             <s-button
-//               variant="primary"
-//               onClick={handleSave}
-//               disabled={!canSave}
-//               {...(isSaving ? { loading: true } : {})}
-//             >
-//               Save to Metafield
-//             </s-button>
-//             <s-button
-//               variant="secondary"
-//               onClick={() => {
-//                 setSelectedProduct(null);
-//                 setTiers([]);
-//               }}
-//             >
-//               Cancel
-//             </s-button>
-//           </s-stack>
-
-//           {fetcher.data?.errors && (
-//             <s-banner tone="critical" style={{ marginTop: "12px" }}>
-//               {fetcher.data.errors.join(" ")}
-//             </s-banner>
-//           )}
-//         </s-section>
-//       )}
-
-//       {/* ── Saved Rules Preview ── */}
-//       <s-section heading="Saved Volume Discount Rules">
-//         <s-box
-//           padding="base"
-//           borderWidth="base"
-//           borderRadius="base"
-//           background="subdued"
-//         >
-//           <pre style={{ margin: 0, fontSize: "12px", overflowX: "auto" }}>
-//             {JSON.stringify(
-//               allRules?.length ? allRules : { message: "No rules saved yet." },
-//               null,
-//               2
-//             )}
-//           </pre>
-//         </s-box>
-//       </s-section>
-//     </s-page>
-//   );
-// }
-
-// export const headers = (headersArgs) => {
-//   return boundary.headers(headersArgs);
-// };
