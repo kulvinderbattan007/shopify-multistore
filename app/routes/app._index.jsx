@@ -738,7 +738,7 @@ export default function Index() {
         {/* CTA strip */}
         <div className="vd-cta">
           <div>
-            <h2>Ready to grow your sales?</h2>
+            <h2>Ready to grow your sales? </h2>
             <p>Create your first volume discount rule in under 2 minutes.</p>
           </div>
           <s-link href="/app/volumediscount">
