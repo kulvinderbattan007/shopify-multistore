@@ -441,7 +441,7 @@ export default function Contact() {
                             </p>
 
                             <a
-                                href="mailto:xx@xx.com"
+                                href="mailto:primedev026@gmail.com"
                                 className="vd-support-btn"
                             >
                                 Contact support
@@ -521,11 +521,11 @@ export default function Contact() {
                     {/* Footer */}
                     <div className="vd-support-footer">
                         Having issues?{" "}
-                        <a href="mailto:xx@xx.com">
+                        <a href="mailto:primedev026@gmail.com">
                             Click here
                         </a>{" "}
                         to open the support bubble or contact us at{" "}
-                        <strong>xx@xx.com</strong>
+                        <strong>primedev026@gmail.com</strong>
                     </div>
                 </div>
 
