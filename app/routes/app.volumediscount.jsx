@@ -107,7 +107,7 @@ export async function loader({ request }) {
 
 
   // 🔹 Check if automatic app discount already exists
-const discountsResponse = await admin.graphql(`
+  const discountsResponse = await admin.graphql(`
   #graphql
   query {
     discountNodes(first: 20) {
@@ -164,45 +164,45 @@ const discountsResponse = await admin.graphql(`
   }
 `);
 
-const discountsJson = await discountsResponse.json();
+  const discountsJson = await discountsResponse.json();
 
-console.log("======== FULL DISCOUNTS ========");
-console.dir(discountsJson, { depth: null });
+  // console.log("======== FULL DISCOUNTS ========");
+  // console.dir(discountsJson, { depth: null });
 
-const discounts =
-  discountsJson?.data?.discountNodes?.edges || [];
+  const discounts =
+    discountsJson?.data?.discountNodes?.edges || [];
 
-const existingAppDiscount = discounts.find((d) => {
+  const existingAppDiscount = discounts.find((d) => {
 
-  const discount = d?.node?.discount;
+    const discount = d?.node?.discount;
 
-  console.log("CHECKING:", discount);
+    // console.log("CHECKING:", discount);
 
-  return (
-    discount?.__typename === "DiscountAutomaticApp" &&
-    discount?.title === "Volume discount (Prime App)"
-  );
-});
+    return (
+      discount?.__typename === "DiscountAutomaticApp" &&
+      discount?.title === "Volume discount (Prime App)"
+    );
+  });
 
-console.log("======== FOUND APP DISCOUNT ========");
-console.dir(existingAppDiscount, { depth: null });
+  // console.log("======== FOUND APP DISCOUNT ========");
+  // console.dir(existingAppDiscount, { depth: null });
 
-const isDiscountEnabled = !!existingAppDiscount;
+  const isDiscountEnabled = !!existingAppDiscount;
 
-const discountNodeId = existingAppDiscount?.node?.id || null;
+  const discountNodeId = existingAppDiscount?.node?.id || null;
 
-console.log("======== FINAL STATE ========");
-console.log({
-  isDiscountEnabled,
-  discountNodeId,
-});
+  // console.log("======== FINAL STATE ========");
+  // console.log({
+  //   isDiscountEnabled,
+  //   discountNodeId,
+  // });
 
- return {
-  savedRules,
-  savedProducts,
-  isDiscountEnabled,
-  discountNodeId,
-};
+  return {
+    savedRules,
+    savedProducts,
+    isDiscountEnabled,
+    discountNodeId,
+  };
 }
 
 // ─── Server: Action ───────────────────────────────────────────────────────────
@@ -214,7 +214,7 @@ export async function action({ request }) {
 
   // ── Search / Browse products ──
   if (actionType === "SEARCH_PRODUCTS") {
-    console.log("ffff");
+    // console.log("ffff");
     const raw = formData.get("query");
     const searchTerm = typeof raw === "string" ? raw.trim() : "";
     const variables = searchTerm.length > 0 ? { query: `title:${searchTerm}` } : {};
@@ -267,13 +267,13 @@ export async function action({ request }) {
     }
 
     const shopResponse = await admin.graphql(
-  `#graphql
+      `#graphql
   query GetShopId {
     shop {
       id
     }
   }`
-);
+    );
     const shopJson = await shopResponse.json();
     const shopId = shopJson?.data?.shop?.id;
 
@@ -319,11 +319,11 @@ export async function action({ request }) {
 
 
   // ── Enable custom discount ──
-if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
-  const { admin } = await authenticate.admin(request);
+  if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
+    const { admin } = await authenticate.admin(request);
 
-  const response = await admin.graphql(
-    `#graphql
+    const response = await admin.graphql(
+      `#graphql
     mutation CreateAutomaticDiscount {
       discountAutomaticAppCreate(
         automaticAppDiscount: {
@@ -342,41 +342,41 @@ if (actionType === "ENABLE_CUSTOM_DISCOUNT") {
         }
       }
     }`
-  );
+    );
 
-  const json = await response.json();
+    const json = await response.json();
 
-  const errors = json?.data?.discountAutomaticAppCreate?.userErrors || [];
+    const errors = json?.data?.discountAutomaticAppCreate?.userErrors || [];
 
-  if (errors.length) {
+    if (errors.length) {
+      return {
+        actionType: "ENABLE_CUSTOM_DISCOUNT",
+        errors: errors.map((e) => e.message),
+      };
+    }
+
     return {
       actionType: "ENABLE_CUSTOM_DISCOUNT",
-      errors: errors.map((e) => e.message),
+      success: true,
+      discountId:
+        json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
     };
   }
 
- return {
-  actionType: "ENABLE_CUSTOM_DISCOUNT",
-  success: true,
-  discountId:
-    json?.data?.discountAutomaticAppCreate?.automaticAppDiscount?.discountId,
-};
-}
+  // ── Disable custom discount ──
+  if (actionType === "DISABLE_CUSTOM_DISCOUNT") {
 
-// ── Disable custom discount ──
-if (actionType === "DISABLE_CUSTOM_DISCOUNT") {
+    const discountNodeId = formData.get("discountNodeId");
 
-  const discountNodeId = formData.get("discountNodeId");
+    if (!discountNodeId) {
+      return {
+        actionType: "DISABLE_CUSTOM_DISCOUNT",
+        errors: ["Discount node ID missing."],
+      };
+    }
 
-  if (!discountNodeId) {
-    return {
-      actionType: "DISABLE_CUSTOM_DISCOUNT",
-      errors: ["Discount node ID missing."],
-    };
-  }
-
-  const response = await admin.graphql(
-    `#graphql
+    const response = await admin.graphql(
+      `#graphql
     mutation discountAutomaticDelete($id: ID!) {
       discountAutomaticDelete(id: $id) {
         deletedAutomaticDiscountId
@@ -387,62 +387,62 @@ if (actionType === "DISABLE_CUSTOM_DISCOUNT") {
         }
       }
     }`,
-    {
-      variables: {
-        id: discountNodeId,
-      },
+      {
+        variables: {
+          id: discountNodeId,
+        },
+      }
+    );
+
+    const json = await response.json();
+
+    const errors =
+      json?.data?.discountAutomaticDelete?.userErrors || [];
+
+    if (errors.length) {
+      return {
+        actionType: "DISABLE_CUSTOM_DISCOUNT",
+        errors: errors.map((e) => e.message),
+      };
     }
-  );
 
-  const json = await response.json();
-
-  const errors =
-    json?.data?.discountAutomaticDelete?.userErrors || [];
-
-  if (errors.length) {
     return {
       actionType: "DISABLE_CUSTOM_DISCOUNT",
-      errors: errors.map((e) => e.message),
+      success: true,
     };
   }
 
-  return {
-    actionType: "DISABLE_CUSTOM_DISCOUNT",
-    success: true,
-  };
-}
+  if (actionType === "REMOVE_PRODUCT") {
+    const productId = formData.get("productId");
+    let rules = [];
+    try { rules = JSON.parse(formData.get("rules")); } catch { }
 
-if (actionType === "REMOVE_PRODUCT") {
-  const productId = formData.get("productId");
-  let rules = [];
-  try { rules = JSON.parse(formData.get("rules")); } catch {}
+    const updatedRules = rules.filter(r => r.productId !== productId);
 
-  const updatedRules = rules.filter(r => r.productId !== productId);
-
-  const shopResponse = await admin.graphql(
-  `#graphql
+    const shopResponse = await admin.graphql(
+      `#graphql
   query GetShopId {
     shop {
       id
     }
   }`
-);
-const shopJson = await shopResponse.json();
-const shopId = shopJson?.data?.shop?.id;
-  // const shopId = shopJson?.data?.shop?.id;
+    );
+    const shopJson = await shopResponse.json();
+    const shopId = shopJson?.data?.shop?.id;
+    // const shopId = shopJson?.data?.shop?.id;
 
-  await admin.graphql(
-    `#graphql
+    await admin.graphql(
+      `#graphql
     mutation($metafields: [MetafieldsSetInput!]!) {
       metafieldsSet(metafields: $metafields) {
         userErrors { field message }
       }
     }`,
-    { variables: { metafields: [{ ownerId: shopId, namespace: METAFIELD_NAMESPACE, key: METAFIELD_KEY, type: METAFIELD_TYPE, value: JSON.stringify(updatedRules) }] } }
-  );
+      { variables: { metafields: [{ ownerId: shopId, namespace: METAFIELD_NAMESPACE, key: METAFIELD_KEY, type: METAFIELD_TYPE, value: JSON.stringify(updatedRules) }] } }
+    );
 
-  return { actionType: "REMOVE_PRODUCT", success: true, updatedRules };
-}
+    return { actionType: "REMOVE_PRODUCT", success: true, updatedRules };
+  }
 
   return { errors: ["Unknown action."] };
 }
@@ -471,38 +471,38 @@ function getVariants(product) {
 function PortalDropdown({ anchorRef, portalRef, children }) {
   const [rect, setRect] = useState(null);
 
-//   useEffect(() => {
-//     function updateRect() {
-//       if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
-//     }
-//     updateRect();
-//     window.addEventListener("scroll", updateRect, true);
-//     window.addEventListener("resize", updateRect);
-//     if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
-//   if (fetcher.data.success) {
-//     shopify.toast.show("Custom discount enabled!");
-//   }
-//   if (fetcher.data.errors?.length) {
-//     shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
-//   }
-// }
-//     return () => {
-//       window.removeEventListener("scroll", updateRect, true);
-//       window.removeEventListener("resize", updateRect);
-//     };
-//   }, [anchorRef]);
-useEffect(() => {
-  function updateRect() {
-    if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
-  }
-  updateRect();
-  window.addEventListener("scroll", updateRect, true);
-  window.addEventListener("resize", updateRect);
-  return () => {
-    window.removeEventListener("scroll", updateRect, true);
-    window.removeEventListener("resize", updateRect);
-  };
-}, [anchorRef]);
+  //   useEffect(() => {
+  //     function updateRect() {
+  //       if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
+  //     }
+  //     updateRect();
+  //     window.addEventListener("scroll", updateRect, true);
+  //     window.addEventListener("resize", updateRect);
+  //     if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
+  //   if (fetcher.data.success) {
+  //     shopify.toast.show("Custom discount enabled!");
+  //   }
+  //   if (fetcher.data.errors?.length) {
+  //     shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
+  //   }
+  // }
+  //     return () => {
+  //       window.removeEventListener("scroll", updateRect, true);
+  //       window.removeEventListener("resize", updateRect);
+  //     };
+  //   }, [anchorRef]);
+  useEffect(() => {
+    function updateRect() {
+      if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
+    }
+    updateRect();
+    window.addEventListener("scroll", updateRect, true);
+    window.addEventListener("resize", updateRect);
+    return () => {
+      window.removeEventListener("scroll", updateRect, true);
+      window.removeEventListener("resize", updateRect);
+    };
+  }, [anchorRef]);
 
   if (!rect) return null;
 
@@ -874,12 +874,12 @@ export default function VolumeDiscount() {
   const [allRules, setAllRules] = useState(loaderData?.savedRules || []);
 
   const [discountEnabled, setDiscountEnabled] = useState(
-  loaderData?.isDiscountEnabled || false
+    loaderData?.isDiscountEnabled || false
   );
   const [discountNodeId, setDiscountNodeId] = useState(
-  loaderData?.discountNodeId || null
+    loaderData?.discountNodeId || null
   );
-  
+
 
   const searchBarRef = useRef(null);
   const dropdownPortalRef = useRef(null);
@@ -889,9 +889,9 @@ export default function VolumeDiscount() {
   const isSaving = fetcher.state !== "idle" && fetcher.formData?.get("actionType") === "SAVE_VOLUME_RULES";
 
   const isTogglingDiscount =
-  fetcher.state !== "idle" &&
-  (fetcher.formData?.get("actionType") === "ENABLE_CUSTOM_DISCOUNT" ||
-   fetcher.formData?.get("actionType") === "DISABLE_CUSTOM_DISCOUNT");
+    fetcher.state !== "idle" &&
+    (fetcher.formData?.get("actionType") === "ENABLE_CUSTOM_DISCOUNT" ||
+      fetcher.formData?.get("actionType") === "DISABLE_CUSTOM_DISCOUNT");
 
 
   // useEffect(() => {
@@ -912,65 +912,65 @@ export default function VolumeDiscount() {
   //   }
   // }, [fetcher.data]);
   useEffect(() => {
-  if (!fetcher.data) return;
-  if (fetcher.data.actionType === "SEARCH_PRODUCTS") {
-    setSuggestions(fetcher.data.products || []);
-    setShowSuggestions(true);
-  }
-  if (fetcher.data.actionType === "SAVE_VOLUME_RULES") {
-    if (fetcher.data.success) {
-      shopify.toast.show("Volume discount rules saved!");
-      setAllRules(fetcher.data.savedRules || allRules);
-      setModalProduct(null);
+    if (!fetcher.data) return;
+    if (fetcher.data.actionType === "SEARCH_PRODUCTS") {
+      setSuggestions(fetcher.data.products || []);
+      setShowSuggestions(true);
     }
-    if (fetcher.data.errors?.length) {
-      shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
+    if (fetcher.data.actionType === "SAVE_VOLUME_RULES") {
+      if (fetcher.data.success) {
+        shopify.toast.show("Volume discount rules saved!");
+        setAllRules(fetcher.data.savedRules || allRules);
+        setModalProduct(null);
+      }
+      if (fetcher.data.errors?.length) {
+        shopify.toast.show(fetcher.data.errors.join(", "), { isError: true });
+      }
     }
-  }
-  // ← Add this:
-if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
+    // ← Add this:
+    if (fetcher.data.actionType === "ENABLE_CUSTOM_DISCOUNT") {
 
-  if (fetcher.data.success) {
+      if (fetcher.data.success) {
 
-    setDiscountEnabled(true);
+        setDiscountEnabled(true);
 
-    if (fetcher.data.discountId) {
-      setDiscountNodeId(fetcher.data.discountId);
+        if (fetcher.data.discountId) {
+          setDiscountNodeId(fetcher.data.discountId);
+        }
+
+        shopify.toast.show("Custom discount enabled!");
+      }
+
+      if (fetcher.data.errors?.length) {
+        shopify.toast.show(
+          fetcher.data.errors.join(", "),
+          { isError: true }
+        );
+      }
     }
 
-    shopify.toast.show("Custom discount enabled!");
-  }
+    if (fetcher.data.actionType === "REMOVE_PRODUCT" && fetcher.data.success) {
+      setAllRules(fetcher.data.updatedRules);
+      shopify.toast.show("Product removed.");
+    }
 
-  if (fetcher.data.errors?.length) {
-    shopify.toast.show(
-      fetcher.data.errors.join(", "),
-      { isError: true }
-    );
-  }
-}
+    if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
 
-  if (fetcher.data.actionType === "REMOVE_PRODUCT" && fetcher.data.success) {
-  setAllRules(fetcher.data.updatedRules);
-  shopify.toast.show("Product removed.");
-}
+      if (fetcher.data.success) {
+        setDiscountEnabled(false);
+        setDiscountNodeId(null);
 
-if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
+        shopify.toast.show("Custom discount disabled!");
+      }
 
-  if (fetcher.data.success) {
-    setDiscountEnabled(false);
-    setDiscountNodeId(null);
-
-    shopify.toast.show("Custom discount disabled!");
-  }
-
-  if (fetcher.data.errors?.length) {
-    shopify.toast.show(
-      fetcher.data.errors.join(", "),
-      { isError: true }
-    );
-  }
-}
-}, [fetcher.data]);
+      if (fetcher.data.errors?.length) {
+        shopify.toast.show(
+          fetcher.data.errors.join(", "),
+          { isError: true }
+        );
+      }
+    }
+  }, [fetcher.data]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -1007,12 +1007,12 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
   //   setAddedProducts((prev) => prev.filter((p) => p.id !== productId));
   // }
   function handleRemoveProduct(productId) {
-  setAddedProducts(prev => prev.filter(p => p.id !== productId));
-  fetcher.submit(
-    { actionType: "REMOVE_PRODUCT", productId, rules: JSON.stringify(allRules) },
-    { method: "post" }
-  );
-}
+    setAddedProducts(prev => prev.filter(p => p.id !== productId));
+    fetcher.submit(
+      { actionType: "REMOVE_PRODUCT", productId, rules: JSON.stringify(allRules) },
+      { method: "post" }
+    );
+  }
 
   function handleSaveTiers(product, tiers) {
     const updatedRules = Array.isArray(allRules)
@@ -1038,29 +1038,29 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
   return (
     <s-page heading="Volume Discounts">
 
-    <s-section heading="Discount status">
-  <div
-    style={{
-      padding: "12px",
-      border: "1px solid #e1e3e5",
-      borderRadius: "10px",
-      background: "#fff",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-    }}
-  >
-    <div>
-      <div style={{ fontSize: "14px", fontWeight: 500 }}>
-        Enable automatic discount
-      </div>
-      <div style={{ fontSize: "12px", color: "#6d7175" }}>
-        {/* This will activate your Shopify discount function */}
-        Automatically apply volume discounts when customers meet your quantity rules.
-      </div>
-    </div>
+      <s-section heading="Discount status">
+        <div
+          style={{
+            padding: "12px",
+            border: "1px solid #e1e3e5",
+            borderRadius: "10px",
+            background: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: "14px", fontWeight: 500 }}>
+              Enable automatic discount
+            </div>
+            <div style={{ fontSize: "12px", color: "#6d7175" }}>
+              {/* This will activate your Shopify discount function */}
+              Automatically apply volume discounts when customers meet your quantity rules.
+            </div>
+          </div>
 
-    {/* <input
+          {/* <input
       type="checkbox"
       onChange={(e) => {
         if (e.target.checked) {
@@ -1073,83 +1073,83 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
       style={{ width: "18px", height: "18px", cursor: "pointer" }}
     /> */}
 
-    <button
-  type="button"
-  disabled={isTogglingDiscount}
-  onClick={() => {
+          <button
+            type="button"
+            disabled={isTogglingDiscount}
+            onClick={() => {
 
-  // TURN OFF
-  if (discountEnabled) {
+              // TURN OFF
+              if (discountEnabled) {
 
-    fetcher.submit(
-      {
-        actionType: "DISABLE_CUSTOM_DISCOUNT",
-        discountNodeId,
-      },
-      { method: "post" }
-    );
+                fetcher.submit(
+                  {
+                    actionType: "DISABLE_CUSTOM_DISCOUNT",
+                    discountNodeId,
+                  },
+                  { method: "post" }
+                );
 
-    return;
-  }
+                return;
+              }
 
-  // TURN ON
-  fetcher.submit(
-    { actionType: "ENABLE_CUSTOM_DISCOUNT" },
-    { method: "post" }
-  );
-}}
-  style={{
-    position: "relative",
-    width: "46px",
-    height: "26px",
-    borderRadius: "999px",
-    border: "none",
-    // cursor: discountEnabled ? "default" : "pointer",
-    cursor: isTogglingDiscount ? "not-allowed" : "pointer",
-    background: discountEnabled ? "#16a34a" : "#c9cccf",
-    transition: "all 0.2s ease",
-    padding: 0,
-  }}
->
-  {isTogglingDiscount ? (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    style={{
-      position: "absolute",
-      top: "5px",
-      left: "15px",
-      transform: "translateX(-50%)",
-      animation: "vd-spin 0.8s linear infinite",
-    }}
-  >
-    <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
-    <path d="M12 2a10 10 0 0110 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-  </svg>
-) : (
-  <div
-    style={{
-      position: "absolute",
-      top: "3px",
-      left: discountEnabled ? "23px" : "3px",
-      width: "20px",
-      height: "20px",
-      borderRadius: "50%",
-      background: "#fff",
-      transition: "all 0.2s ease",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-    }}
-  />
-)}
-</button>
-  </div>
-</s-section>
+              // TURN ON
+              fetcher.submit(
+                { actionType: "ENABLE_CUSTOM_DISCOUNT" },
+                { method: "post" }
+              );
+            }}
+            style={{
+              position: "relative",
+              width: "46px",
+              height: "26px",
+              borderRadius: "999px",
+              border: "none",
+              // cursor: discountEnabled ? "default" : "pointer",
+              cursor: isTogglingDiscount ? "not-allowed" : "pointer",
+              background: discountEnabled ? "#16a34a" : "#c9cccf",
+              transition: "all 0.2s ease",
+              padding: 0,
+            }}
+          >
+            {isTogglingDiscount ? (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                style={{
+                  position: "absolute",
+                  top: "5px",
+                  left: "15px",
+                  transform: "translateX(-50%)",
+                  animation: "vd-spin 0.8s linear infinite",
+                }}
+              >
+                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                <path d="M12 2a10 10 0 0110 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "3px",
+                  left: discountEnabled ? "23px" : "3px",
+                  width: "20px",
+                  height: "20px",
+                  borderRadius: "50%",
+                  background: "#fff",
+                  transition: "all 0.2s ease",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }}
+              />
+            )}
+          </button>
+        </div>
+      </s-section>
 
       {/* Search */}
       <s-section heading="Add Products">
-      {/* <pre
+        {/* <pre
   style={{
     background: "#111",
     color: "#0f0",
@@ -1278,7 +1278,32 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
                     </div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: "14px", fontWeight: 500, color: "#202223", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.title}</div>
+                    {/* <div style={{ fontSize: "14px", fontWeight: 500, color: "#202223", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.title}</div> */}
+                    <a
+                      href={`shopify:admin/products/${product.id.split("/").pop()}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 500,
+                        color: "#202223",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        textDecoration: "none",
+                        display: "block",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.textDecoration = "underline";
+                        e.currentTarget.style.color = "#5c6ac4";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.textDecoration = "none";
+                        e.currentTarget.style.color = "#202223";
+                      }}
+                    >
+                      {product.title}
+                    </a>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px", flexWrap: "wrap" }}>
                       {price && <span style={{ fontSize: "12px", color: "#6d7175" }}>{price}</span>}
                       {!isDefault && <span style={{ fontSize: "11px", color: "#6d7175" }}>{variants.length} variants</span>}
@@ -1287,6 +1312,33 @@ if (fetcher.data.actionType === "DISABLE_CUSTOM_DISCOUNT") {
                           {existingTiers.length} tier{existingTiers.length !== 1 ? "s" : ""} · {variantsWithTiers} variant{variantsWithTiers !== 1 ? "s" : ""}
                         </span>
                       )}
+
+                      {/* <span
+                        onClick={() =>
+                          window.open(
+                            `/products/${product.handle}`,
+                            "_blank"
+                          )
+                        }
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 500,
+                          background: "#f0f4ff",
+                          color: "#5c6ac4",
+                          borderRadius: "20px",
+                          padding: "1px 8px",
+                          cursor: "pointer",
+                          border: "1px solid #c4cff5",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "#e4ebff";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "#f0f4ff";
+                        }}
+                      >
+                        Preview
+                      </span> */}
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
