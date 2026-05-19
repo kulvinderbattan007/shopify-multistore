@@ -327,7 +327,7 @@ export async function action({ request }) {
     mutation CreateAutomaticDiscount {
       discountAutomaticAppCreate(
         automaticAppDiscount: {
-          title: "Volume discount (Prime App)"
+          title: "Rulex: Automatic Discount"
           functionHandle: "discount-function-js"
           discountClasses: [PRODUCT, ORDER, SHIPPING]
           startsAt: "2025-01-01T00:00:00"
