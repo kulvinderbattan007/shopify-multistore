@@ -180,7 +180,7 @@ export async function loader({ request }) {
 
     return (
       discount?.__typename === "DiscountAutomaticApp" &&
-      discount?.title === "Volume discount (Prime App)"
+      discount?.title === "Rulex: Automatic Discount"
     );
   });
 

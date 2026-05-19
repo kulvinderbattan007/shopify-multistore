@@ -15,7 +15,9 @@ function startKeepAlivePing() {
   if (keepAliveStarted) return; // prevent multiple intervals on hot reload
   keepAliveStarted = true;
 
-  const PING_URL = "https://shopify-multistore.onrender.com";
+  // const PING_URL = "https://shopify-multistore.onrender.com";
+  const PING_URL = process.env.SHOPIFY_APP_URL || "";
+
   const INTERVAL_MS = 14 * 60 * 1000; // 14 minutes
 
   setInterval(async () => {
