@@ -450,7 +450,7 @@ export default function Contact() {
                     </div>
 
                     {/* Disclaimer */}
-                    <div className="vd-disclaimer-card">
+                    {/* <div className="vd-disclaimer-card">
                         <h3>Products availability disclaimer 📦</h3>
 
                         <p>
@@ -460,7 +460,7 @@ export default function Contact() {
                             sales channel. If these conditions are not met, the product
                             will not be added to cart.
                         </p>
-                    </div>
+                    </div> */}
 
                     {/* FAQ */}
                     <div className="vd-faq-box">
