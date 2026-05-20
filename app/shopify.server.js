@@ -17,7 +17,7 @@ const shopify = shopifyApp({
   sessionStorage: new MongoDBSessionStorage(process.env.DATABASE_URL),
   distribution: AppDistribution.AppStore,
   future: {
-    // expiringOfflineAccessTokens: true,
+    expiringOfflineAccessTokens: true,
     unstable_newEmbeddedAuthStrategy: true, 
   },
   ...(process.env.SHOP_CUSTOM_DOMAIN
