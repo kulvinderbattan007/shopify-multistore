@@ -586,7 +586,7 @@ export default function Index() {
             Rulex Discount App
 
           </div>
-          <h1>Boost sales with<br />smart quantity discounts</h1>
+          <h1>Boost sales with<br />smart quantity discounts...</h1>
           <p>Reward customers for buying more. Set flexible quantity tiers and watch your average order value climb — automatically, no coupon codes needed.</p>
           <div className="vd-hero-actions">
             <s-link href="/app/volumediscount">

@@ -1,41 +1,9 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "0fbd711916afd9456efb05afc00785f5"
-# name = "multistore"
-name = "Rulex Discounts(Testing)"
-
-
-#application_url = "https://shopify-multistore.onrender.com"
 application_url = "https://shopify-multistore.onrender.com"
-
-
 embedded = true
-
-[build]
-automatically_update_urls_on_dev = true
-
-[webhooks]
-api_version = "2026-07"
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-[access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_products,write_cart_transforms,write_discounts,write_metaobject_definitions,write_metaobjects,write_products,read_discounts"
-
-[auth]
-#redirect_urls = [ "https://shopify-multistore.onrender.com/api/auth" ]
-redirect_urls = [
-  "https://shopify-multistore.onrender.com/api/auth",
-  "https://shopify-multistore.onrender.com/auth/callback",
-  "https://shopify-multistore.onrender.com/auth/shopify/callback"
-]
+name = "Rulex Discounts(Testing)"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
@@ -60,3 +28,28 @@ required = true
 [metaobjects.app.example.fields.description]
 name = "Description"
 type = "multi_line_text_field"
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_discounts,read_products,write_cart_transforms,write_discounts,write_metaobject_definitions,write_metaobjects,write_products"
+
+[auth]
+redirect_urls = [
+  "https://shopify-multistore.onrender.com/api/auth",
+  "https://shopify-multistore.onrender.com/auth/callback",
+  "https://shopify-multistore.onrender.com/auth/shopify/callback"
+]
+
+[build]
+automatically_update_urls_on_dev = true

@@ -1,4 +1,4 @@
-// src/cart_lines_discounts_generate_run.js
+// cart_lines_discounts_generate_run.js
 // @ts-check
 
 import {
@@ -6,15 +6,9 @@ import {
   ProductDiscountSelectionStrategy,
 } from "../generated/api";
 
-/**
- * @typedef {import("../generated/api").Input} CartInput
- * @typedef {import("../generated/api").CartLinesDiscountsGenerateRunResult} CartLinesDiscountsGenerateRunResult
- */
-
 export function cartLinesDiscountsGenerateRun(input) {
   console.log("=== cartLinesDiscountsGenerateRun ENTRY ===");
 
-  // ---- 0. Basic guards ---------------------------------------------------
   if (!input?.cart?.lines?.length) {
     console.log("[DEBUG] No cart lines – skipping.");
     return { operations: [] };
@@ -29,7 +23,7 @@ export function cartLinesDiscountsGenerateRun(input) {
     return { operations: [] };
   }
 
-  // ---- 1. Parse volumeDiscountSettings -----------------------------------
+  // ---- 1. Parse metafield ------------------------------------------------
   const metafield = input.shop?.volumeDiscountSettings;
 
   if (!metafield || typeof metafield.value !== "string" || !metafield.value.trim()) {
@@ -37,133 +31,190 @@ export function cartLinesDiscountsGenerateRun(input) {
     return { operations: [] };
   }
 
-  /** @type {any[]} */
-  let rawRules = [];
+  let config;
   try {
-    const parsed = JSON.parse(metafield.value);
-    if (!Array.isArray(parsed)) {
-      console.log("[DEBUG] volumeDiscountSettings.value is not an array.");
+    config = JSON.parse(metafield.value);
+    if (!config?.discount_tiers || !Array.isArray(config.discount_tiers)) {
+      console.log("[DEBUG] discount_tiers missing or not an array.");
       return { operations: [] };
     }
-    rawRules = parsed;
   } catch (e) {
-    console.log("[DEBUG] Failed to parse volumeDiscountSettings.value:", e);
+    console.log("[DEBUG] Failed to parse metafield value:", e);
     return { operations: [] };
   }
 
-  if (!rawRules.length) {
-    console.log("[DEBUG] volumeDiscountSettings array is empty.");
-    return { operations: [] };
+  // ---- 2. Route by discount_type in metafield ----------------------------
+  const discountType = config.discount_type ?? "percentage";
+  const storeDomain = config.store_domain ?? "unknown";
+
+  console.log(`[DEBUG] store_domain=${storeDomain}, discount_type=${discountType}`);
+
+  if (discountType === "fixed_bundle") {
+    return runBundleDiscount(input, config);
   }
 
-  console.log(`[DEBUG] Loaded ${rawRules.length} product rule(s).`);
+  return runVolumeDiscount(input, config);
+}
 
-  /** @type {CartLinesDiscountsGenerateRunResult["operations"][number]["productDiscountsAdd"]["candidates"]} */
-  const candidates = [];
+// ============================================================
+// BUNDLE LOGIC — fixed amount per product
+// ============================================================
+function runBundleDiscount(input, config) {
+  console.log("[BUNDLE] Running bundle discount logic.");
 
-  // ---- 2. Per-line volume discounts --------------------------------------
+  // Build cart map: numericId/GID → lineId
+  const cartProductMap = new Map();
   for (const line of input.cart.lines) {
     if (!line) continue;
+    const productId = line?.merchandise?.product?.id;
+    if (!productId) continue;
+    cartProductMap.set(productId, line.id);
+    const numericId = productId.split("/").pop();
+    if (numericId) cartProductMap.set(numericId, line.id);
+  }
 
-    const merch = line.merchandise;
-    if (!merch || merch.__typename !== "ProductVariant") continue;
+  console.log(`[BUNDLE] Cart products: ${[...cartProductMap.keys()].filter(k => !k.startsWith("gid")).join(", ")}`);
 
-    const productId = merch.product?.id;
-    const variantId = merch.id;
-    const quantity = line.quantity;
+  // Find best tier by highest total_discount
+  let bestTier = null;
+  for (const tier of config.discount_tiers) {
+    if (!Array.isArray(tier.required_product_ids) || !Array.isArray(tier.per_product_discounts)) {
+      console.log("[BUNDLE] Skipping malformed tier.");
+      continue;
+    }
+    const allPresent = tier.required_product_ids.every(
+      (id) => cartProductMap.has(id) || cartProductMap.has(`gid://shopify/Product/${id}`)
+    );
+    console.log(`[BUNDLE] Tier total_discount=${tier.total_discount}, allPresent=${allPresent}`);
+    if (allPresent && (!bestTier || tier.total_discount > bestTier.total_discount)) {
+      bestTier = tier;
+      console.log(`[BUNDLE] New best tier: total_discount=${tier.total_discount}`);
+    }
+  }
 
-    if (!productId || !variantId || typeof quantity !== "number" || quantity <= 0) {
-      console.log(`[DEBUG] Line ${line.id} skipped – missing productId/variantId/quantity.`);
+  if (!bestTier) {
+    console.log("[BUNDLE] No qualifying tier – skipping.");
+    return { operations: [] };
+  }
+
+  const candidates = [];
+  for (const { product_id, discount_amount } of bestTier.per_product_discounts) {
+    if (typeof discount_amount !== "number" || discount_amount <= 0) continue;
+
+    const lineId =
+      cartProductMap.get(product_id) ||
+      cartProductMap.get(`gid://shopify/Product/${product_id}`);
+
+    if (!lineId) {
+      console.log(`[BUNDLE] Product ${product_id} not in cart – skipping.`);
       continue;
     }
 
-    console.log(`[DEBUG] Line ${line.id}: productId=${productId}, variantId=${variantId}, qty=${quantity}`);
-
-    // Find the product config in our rules
-    const productConfig = rawRules.find((c) => c && c.productId === productId);
-    if (!productConfig || !Array.isArray(productConfig.tiers)) {
-      console.log(`[DEBUG] Line ${line.id}: No rule found for productId=${productId}.`);
-      continue;
-    }
-
-    console.log(`[DEBUG] Line ${line.id}: Found product config with ${productConfig.tiers.length} tier(s).`);
-
-    // Find the best matching tier:
-    // - If tier has variantId, it must match this line's variant
-    // - Pick the tier with the highest minQty that is still <= line quantity
-    let bestTier = null;
-
-    for (const tier of productConfig.tiers) {
-      if (!tier) continue;
-
-      // Variant-scoped tier: skip if it's for a different variant
-      if (tier.variantId && tier.variantId !== variantId) {
-        console.log(`[DEBUG]   Tier minQty=${tier.minQty} skipped – variantId mismatch (${tier.variantId} vs ${variantId}).`);
-        continue;
-      }
-
-      if (typeof tier.minQty !== "number" || tier.minQty <= 0) {
-        console.log(`[DEBUG]   Tier skipped – invalid minQty.`);
-        continue;
-      }
-
-      if (quantity >= tier.minQty) {
-        if (!bestTier || tier.minQty > bestTier.minQty) {
-          bestTier = tier;
-          console.log(`[DEBUG]   New best tier: minQty=${tier.minQty}, discount=${tier.discount}%`);
-        }
-      } else {
-        console.log(`[DEBUG]   Tier minQty=${tier.minQty} not met (qty=${quantity}).`);
-      }
-    }
-
-    if (!bestTier) {
-      console.log(`[DEBUG] Line ${line.id}: No qualifying tier found.`);
-      continue;
-    }
-
-    let discountValue = bestTier.discount;
-    if (typeof discountValue !== "number" || discountValue <= 0) {
-      console.log(`[DEBUG] Line ${line.id}: Invalid discount value – skipping.`);
-      continue;
-    }
-    if (discountValue > 100) discountValue = 100;
-
-    // Normalize label: ensure it includes "%" suffix
-    const rawLabel = bestTier.label ?? String(discountValue);
-    const label = rawLabel.toString().trim().endsWith("%")
-      ? rawLabel.toString().trim()
-      : `${rawLabel.toString().trim()}% OFF`;
-
-    console.log(`[DEBUG] Line ${line.id}: Applying ${discountValue}% discount with label "${label}".`);
+    const label = `Bundle Save $${discount_amount % 1 === 0 ? discount_amount : discount_amount.toFixed(2)} OFF`;
+    console.log(`[BUNDLE] Applying $${discount_amount} to lineId=${lineId}`);
 
     candidates.push({
       message: label,
-      targets: [{ cartLine: { id: line.id } }],
+      targets: [{ cartLine: { id: lineId } }],
       value: {
-        percentage: {
-          value: discountValue,
+        fixedAmount: {
+          amount: discount_amount,
+          appliesToEachItem: false,
         },
       },
     });
   }
 
-  // ---- 3. Return result --------------------------------------------------
-  if (!candidates.length) {
-    console.log("[DEBUG] No matching tiers for any line – returning empty operations.");
+  if (!candidates.length) return { operations: [] };
+
+  console.log(`[BUNDLE] Returning ${candidates.length} candidate(s).`);
+  return {
+    operations: [{
+      productDiscountsAdd: {
+        candidates,
+        selectionStrategy: ProductDiscountSelectionStrategy.All,
+      },
+    }],
+  };
+}
+
+// ============================================================
+// DEFAULT VOLUME DISCOUNT LOGIC — percentage based
+// ============================================================
+function runVolumeDiscount(input, config) {
+  console.log("[VOLUME] Running volume discount logic.");
+
+  // Build cart product set
+  const cartProductIds = new Set();
+  const cartLineMap = new Map(); // numericId → line
+  for (const line of input.cart.lines) {
+    if (!line) continue;
+    const productId = line?.merchandise?.product?.id;
+    if (!productId) continue;
+    cartProductIds.add(productId);
+    const numericId = productId.split("/").pop();
+    if (numericId) {
+      cartProductIds.add(numericId);
+      cartLineMap.set(numericId, line);
+      cartLineMap.set(productId, line);
+    }
+  }
+
+  console.log(`[VOLUME] Cart products: ${[...cartProductIds].filter(k => !k.startsWith("gid")).join(", ")}`);
+
+  // Find best tier by highest discount_percentage
+  let bestTier = null;
+  for (const tier of config.discount_tiers) {
+    if (!Array.isArray(tier.required_product_ids) || typeof tier.discount_percentage !== "number") {
+      console.log("[VOLUME] Skipping malformed tier.");
+      continue;
+    }
+    const allPresent = tier.required_product_ids.every(
+      (id) => cartProductIds.has(id) || cartProductIds.has(`gid://shopify/Product/${id}`)
+    );
+    console.log(`[VOLUME] Tier qty=${tier.quantity}, discount=${tier.discount_percentage}%, allPresent=${allPresent}`);
+    if (allPresent && (!bestTier || tier.discount_percentage > bestTier.discount_percentage)) {
+      bestTier = tier;
+      console.log(`[VOLUME] New best tier: discount_percentage=${tier.discount_percentage}%`);
+    }
+  }
+
+  if (!bestTier) {
+    console.log("[VOLUME] No qualifying tier – skipping.");
     return { operations: [] };
   }
 
-  console.log(`[DEBUG] Returning ${candidates.length} candidate(s).`);
+  const label = `${bestTier.discount_percentage}% OFF`;
+  const candidates = [];
 
+  for (const line of input.cart.lines) {
+    if (!line) continue;
+    const productId = line?.merchandise?.product?.id;
+    if (!productId) continue;
+    const numericId = productId.split("/").pop();
+
+    const isPartOfTier = bestTier.required_product_ids.some(
+      (id) => id === productId || id === numericId
+    );
+    if (!isPartOfTier) continue;
+
+    console.log(`[VOLUME] Line ${line.id}: applying ${bestTier.discount_percentage}%`);
+    candidates.push({
+      message: label,
+      targets: [{ cartLine: { id: line.id } }],
+      value: { percentage: { value: bestTier.discount_percentage } },
+    });
+  }
+
+  if (!candidates.length) return { operations: [] };
+
+  console.log(`[VOLUME] Returning ${candidates.length} candidate(s).`);
   return {
-    operations: [
-      {
-        productDiscountsAdd: {
-          candidates,
-          selectionStrategy: ProductDiscountSelectionStrategy.All,
-        },
+    operations: [{
+      productDiscountsAdd: {
+        candidates,
+        selectionStrategy: ProductDiscountSelectionStrategy.All,
       },
-    ],
+    }],
   };
 }
